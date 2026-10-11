@@ -105,18 +105,26 @@ def plan_searches(store: Store, cfg: dict, now: datetime, budget: int) -> list[t
 
 
 def _run_searches(client, store: Store, cfg: dict, now: datetime, ts: str,
-                  tasks: list[tuple[str, str]], notes: list[str]) -> set[str]:
+                  tasks: list[tuple[str, str]], notes: list[str], budget: int) -> set[str]:
     sc = cfg["search"]
     published_after = iso(now - timedelta(days=sc["window_days"]))
     status = {q["query"]: q["status"] for q in store.queries()}
     orders = sc.get("orders", ["viewCount"])
     found: set[str] = set()
+    # tasks are planned within the budget, but a request retried after a 5xx is charged twice (11.10: 35 calls
+    # for a budget of 34) -> stop on the calls actually made, not on the number of tasks
+    day = quota_day(now)
+    stop_at = store.quota_used(day, "search") + budget
     for query, duration in tasks:
         # alternate result ordering between repeats: viewCount = big channels, relevance = another slice
         last = store.last_query_order(query, duration)
         order = orders[(orders.index(last) + 1) % len(orders)] if last in orders else orders[0]
         token = None
         for _ in range(sc["pages_per_query"]):
+            if store.quota_used(day, "search") >= stop_at:
+                notes.append(f"search: бюджет {budget} вызовов исчерпан (повторы после ошибок тоже тарифицируются)")
+                store.conn.commit()
+                return found
             try:
                 resp = client.search_videos(query, published_after, duration, sc["region"],
                                             sc["language"], token, order=order)
@@ -286,7 +294,7 @@ def run(client, store: Store, cfg: dict, now: datetime, meter: QuotaMeter) -> Ru
     budget = search_budget(store, cfg, now)
     tasks = plan_searches(store, cfg, now, budget)
     log.info("search budget %d, tasks %d", budget, len(tasks))
-    found = _run_searches(client, store, cfg, now, ts, tasks, notes)
+    found = _run_searches(client, store, cfg, now, ts, tasks, notes, budget)
     log.info("search: %d videos", len(found))
     fetched = _run_charts(client, store, cfg, ts, notes)
     imported_channels: list[str] = []

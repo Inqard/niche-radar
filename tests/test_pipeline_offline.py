@@ -270,6 +270,28 @@ def test_quota_accounting_matches_calls(day1):
     assert result.calls == client.calls
 
 
+class RetryingClient(FakeClient):
+    """The first search request is charged twice, as the real client's retry after a 5xx is."""
+
+    def search_videos(self, *args, **kwargs):
+        if not self.calls["search"]:
+            self._tick("search")
+        return super().search_videos(*args, **kwargs)
+
+
+def test_search_stops_at_budget_when_a_retry_is_charged(cfg, tmp_path):
+    cfg["search"]["daily_search_limit"] = cfg["search"]["max_calls_per_run"] = 2  # = 2 seeds x 1 duration
+    store = Store(tmp_path / "radar.sqlite")
+    meter = QuotaMeter(store, DAY1)
+    client = RetryingClient(FakeWorld(DAY1), meter)
+    result = run(client, store, cfg, DAY1, meter)
+    assert store.quota_used(quota_day(DAY1), "search") == client.calls["search"] == 2
+    searched = [q for q in ("etymology", "game lore explained") if store.last_query_run(q, "medium")]
+    assert len(searched) == 1                   # the second task stays due for the next run
+    assert any("бюджет 2" in n for n in result.notes)
+    store.close()
+
+
 def test_report_files_are_written(day1, cfg):
     _, _, _, result, tmp_path = day1
     report = write_outputs(result, cfg, tmp_path / "reports")
