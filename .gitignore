@@ -10,3 +10,6 @@ docs/QUOTA-REQUEST.md
 __pycache__/
 .pytest_cache/
 *.pyc
+docs/FORM-FILL.md
+docs/evidence/
+docs/evedence/
