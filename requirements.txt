@@ -1,2 +1,3 @@
 requests>=2.31
+tzdata>=2024.1; sys_platform == "win32"   # US Eastern publish hours in the report (Windows has no tz database)
 pytest>=8.0

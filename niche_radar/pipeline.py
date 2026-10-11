@@ -61,6 +61,21 @@ def direction_settings(cfg: dict, direction: str) -> tuple[list[str], int]:
     return sc["durations"], sch["requery_days"]
 
 
+CATEGORY_PREFIX = "category:"  # registry key of a keyword-free category search, e.g. "category:27"
+
+
+def category_id_of(query: str) -> str | None:
+    return query[len(CATEGORY_PREFIX):] if query.startswith(CATEGORY_PREFIX) else None
+
+
+def query_settings(cfg: dict, query: str, direction: str) -> tuple[list[str], int]:
+    """(durations, requery_days) of a registry entry: category tops have their own cadence."""
+    if category_id_of(query) is not None:
+        cs = cfg["category_search"]
+        return cs["durations"], cs["requery_days"]
+    return direction_settings(cfg, direction)
+
+
 def plan_searches(store: Store, cfg: dict, now: datetime, budget: int) -> list[tuple[str, str]]:
     """(query, duration) tasks: new candidates first (explore share), then the stalest seeds/actives."""
     pages = cfg["search"]["pages_per_query"]
@@ -84,8 +99,8 @@ def plan_searches(store: Store, cfg: dict, now: datetime, budget: int) -> list[t
                 tasks.append((q["query"], d))
 
     due = []
-    for q in store.queries(("seed", "active")):
-        durations, requery = direction_settings(cfg, q["direction"])
+    for q in store.queries(("seed", "active", "category")):
+        durations, requery = query_settings(cfg, q["query"], q["direction"])
         for d in durations:
             last = store.last_query_run(q["query"], d)
             if last is None or m.days_between(now, last) >= requery:
@@ -125,9 +140,11 @@ def _run_searches(client, store: Store, cfg: dict, now: datetime, ts: str,
                 notes.append(f"search: бюджет {budget} вызовов исчерпан (повторы после ошибок тоже тарифицируются)")
                 store.conn.commit()
                 return found
+            category = category_id_of(query)
             try:
-                resp = client.search_videos(query, published_after, duration, sc["region"],
-                                            sc["language"], token, order=order)
+                resp = client.search_videos(None if category else query, published_after, duration,
+                                            sc["region"], sc["language"], token, order=order,
+                                            category_id=category)
             except QuotaExceeded as e:
                 notes.append(f"search остановлен: {e}")
                 store.conn.commit()
@@ -289,6 +306,14 @@ def run(client, store: Store, cfg: dict, now: datetime, meter: QuotaMeter) -> Ru
                                    "origin='seed'", (direction, q))
     for q in store.queries(("seed",)):  # removed from the config -> stop spending quota on it
         if q["query"] not in configured:
+            store.set_query_status(q["query"], "retired")
+    # В2: category tops without a keyword; direction = the same family as the category's trending chart
+    categories = {CATEGORY_PREFIX + c for c in cfg.get("category_search", {}).get("category_ids", [])}
+    for key in sorted(categories):
+        store.ensure_query(key, f"trending:{category_id_of(key)}", "category", ts, status="category")
+        store.conn.execute("UPDATE queries SET status='category' WHERE query=? AND origin='category'", (key,))
+    for q in store.queries(("category",)):
+        if q["query"] not in categories:
             store.set_query_status(q["query"], "retired")
 
     budget = search_budget(store, cfg, now)

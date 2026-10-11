@@ -47,6 +47,15 @@ def test_key_goes_in_header_not_url_and_calls_are_metered():
     assert buckets == ["search"]
 
 
+def test_category_top_search_has_no_keyword_and_sets_the_category():
+    # В2: Viewstats «Top Videos → Long → категория» = search.list with videoCategoryId and no q
+    client, session, buckets = make([FakeResponse(200, {"items": []})])
+    client.search_videos(None, "2026-09-10T00:00:00Z", "long", "US", "en", category_id="27")
+    _, params = session.calls[0]
+    assert "q" not in params and params["videoCategoryId"] == "27" and params["type"] == "video"
+    assert params["order"] == "viewCount" and buckets == ["search"]
+
+
 def test_quota_exceeded_raises():
     payload = {"error": {"errors": [{"reason": "quotaExceeded"}]}}
     client, _, buckets = make([FakeResponse(403, payload)])

@@ -12,7 +12,7 @@ SCHEMA = """
 CREATE TABLE IF NOT EXISTS videos (
     video_id TEXT PRIMARY KEY, channel_id TEXT, title TEXT, description TEXT,
     published_at TEXT, duration_s INTEGER, category_id TEXT, tags TEXT, topics TEXT,
-    audio_lang TEXT, made_for_kids INTEGER, paid_placement INTEGER, updated_at TEXT
+    audio_lang TEXT, made_for_kids INTEGER, paid_placement INTEGER, updated_at TEXT, synthetic INTEGER
 );
 CREATE TABLE IF NOT EXISTS video_stats (
     video_id TEXT, ts TEXT, views INTEGER, likes INTEGER, comments INTEGER,
@@ -98,6 +98,9 @@ class Store:
         cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(query_runs)")}
         if "last_order" not in cols:
             self.conn.execute("ALTER TABLE query_runs ADD COLUMN last_order TEXT")
+        cols = {r["name"] for r in self.conn.execute("PRAGMA table_info(videos)")}
+        if "synthetic" not in cols:  # 11.10 (вечер): status.containsSyntheticMedia
+            self.conn.execute("ALTER TABLE videos ADD COLUMN synthetic INTEGER")
         self.conn.commit()
 
     def close(self) -> None:
@@ -134,20 +137,25 @@ class Store:
         sn, st = item.get("snippet", {}), item.get("statistics", {})
         status, cd = item.get("status", {}), item.get("contentDetails", {})
         paid = item.get("paidProductPlacementDetails", {}).get("hasPaidProductPlacement")
+        synthetic = status.get("containsSyntheticMedia")  # author's own "altered or synthetic content" label
         self.conn.execute(
-            """INSERT INTO videos VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """INSERT INTO videos (video_id, channel_id, title, description, published_at, duration_s,
+                 category_id, tags, topics, audio_lang, made_for_kids, paid_placement, updated_at, synthetic)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(video_id) DO UPDATE SET
                  title=excluded.title, description=excluded.description, duration_s=excluded.duration_s,
                  category_id=excluded.category_id, tags=excluded.tags, topics=excluded.topics,
                  audio_lang=excluded.audio_lang, made_for_kids=excluded.made_for_kids,
-                 paid_placement=excluded.paid_placement, updated_at=excluded.updated_at""",
+                 paid_placement=excluded.paid_placement, updated_at=excluded.updated_at,
+                 synthetic=excluded.synthetic""",
             (item["id"], sn.get("channelId"), sn.get("title", ""), sn.get("description", ""),
              sn.get("publishedAt"), parse_iso_duration(cd.get("duration")), sn.get("categoryId"),
              json.dumps(sn.get("tags", []), ensure_ascii=False),
              json.dumps(item.get("topicDetails", {}).get("topicCategories", [])),
              sn.get("defaultAudioLanguage") or sn.get("defaultLanguage"),
              None if "madeForKids" not in status else int(bool(status["madeForKids"])),
-             None if paid is None else int(bool(paid)), ts))
+             None if paid is None else int(bool(paid)), ts,
+             None if synthetic is None else int(bool(synthetic))))
         self.conn.execute(
             "INSERT OR REPLACE INTO video_stats VALUES (?,?,?,?,?)",
             (item["id"], ts, _int(st.get("viewCount")), _int(st.get("likeCount")),

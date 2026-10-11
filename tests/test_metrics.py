@@ -24,6 +24,33 @@ def test_top2_share_spots_one_hit_channels():
     assert m.top2_share([10, 10, 10, 10]) == pytest.approx(0.5)
 
 
+def _snap(days_ago: float, views: int | None, subs: int | None = None) -> dict:
+    return {"ts": (NOW - timedelta(days=days_ago)).isoformat().replace("+00:00", "Z"),
+            "views": views, "subs": subs}
+
+
+def test_rate_per_day_uses_the_snapshot_closest_to_a_week_back():
+    # vidIQ «просмотры за 7 дней» (В1 27:19): latest vs the snapshot nearest to 7 days earlier
+    hist = [_snap(20, 0), _snap(7, 700_000), _snap(1, 1_300_000), _snap(0, 1_400_000)]
+    assert m.rate_per_day(hist, "views", 7, 0.8) == pytest.approx((1_400_000 - 700_000) / 7)
+    assert m.rate_per_day([_snap(0.2, 10), _snap(0, 20)], "views", 7, 0.8) is None  # 5 h apart = noise
+    assert m.rate_per_day([_snap(3, None), _snap(0, 20)], "views", 7, 0.8) is None  # hidden counter
+
+
+def test_evergreen_share_separates_old_videos_from_fresh_ones():
+    # channel 1: 10K/day, 2K of it from its videos younger than the window -> 8K from old videos
+    # channel 2: everything comes from fresh videos (hype/event, В4)
+    assert m.evergreen_share([(10_000, 2_000), (5_000, 5_000)]) == pytest.approx(8_000 / 15_000)
+    assert m.evergreen_share([(1_000, 3_000)]) == 0.0      # fresh vpd can exceed a lagging channel counter
+    assert m.evergreen_share([]) is None and m.evergreen_share([(0, 0)]) is None
+
+
+def test_content_farm_needs_many_videos_at_two_a_day():
+    assert m.content_farm(10, 0.4, 0.5, 5)            # В1: «по 2–3 ролика в день»
+    assert not m.content_farm(10, 1.0, 0.5, 5)
+    assert not m.content_farm(3, 0.2, 0.5, 5)         # too few videos to call it a farm
+
+
 def test_growth_ratio_compares_latest_to_first_videos():
     views = [3000, 4000, 5000, 6000, 20000, 50000, 90000, 150000, 250000, 400000]
     assert m.growth_ratio(views) == pytest.approx(150000 / 5000)

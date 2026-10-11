@@ -70,10 +70,23 @@ class Channel:
     indicator: bool = False
     market_share: float | None = None   # share of its long videos aimed at the US market
     risk_share: float | None = None     # share of its long videos with scored risk flags
+    content_farm: bool = False          # В1: long videos at ≥ 2 a day
+    # vidIQ-like growth from our daily channel snapshots (В1 27:19): views and subscribers per day
+    views_per_day: float | None = None
+    subs_per_day: float | None = None
+    uploads_known: bool = False         # latest uploads fetched -> all its recent videos are tracked
+    recent_views_per_day: float = 0.0   # views/day of its videos younger than evergreen_min_age_days
 
     @property
     def url(self) -> str:
         return f"https://www.youtube.com/channel/{self.channel_id}"
+
+    @property
+    def evergreen_pair(self) -> tuple[float, float] | None:
+        """(channel views/day, views/day of its recent videos) — only when both sides are known."""
+        if not self.uploads_known or self.views_per_day is None:
+            return None
+        return self.views_per_day, self.recent_views_per_day
 
     @property
     def us_market(self) -> bool:
@@ -119,6 +132,8 @@ class Niche:
     momentum: float = 0.0           # (fresh views / fresh days) / max(older views / older days, floor)
     top_video_share: float = 0.0    # share of window views taken by the single best video
     demonetized_channels: int = 0   # channels in the sub-niche with the "went silent" signal
+    median_minutes: float | None = None   # В1/В4/В5: longer videos = more ads and an edge over competitors
+    evergreen_share: float | None = None  # share of its channels' daily views from videos older than the window
 
 
 def _velocity(history: list, now: datetime, published: datetime | None) -> tuple[float, bool]:
@@ -156,6 +171,8 @@ def build_videos(store: Store, cfg: dict, now: datetime) -> dict[str, Video]:
         flags = m.keyword_flags(" ".join([row["title"], *tags]), cfg["risk_keywords"])
         if row["made_for_kids"]:
             flags.add("made_for_kids")
+        if row["synthetic"]:
+            flags.add("ai_label")  # the author disclosed realistic altered/synthetic content (В4/В5: нейроаватары)
         money = m.substring_flags(row["description"] or "", cfg["monetization_patterns"])
         if row["paid_placement"]:
             money.add("paid_placement")
@@ -195,6 +212,13 @@ def build_channels(store: Store, videos: dict[str, Video], cfg: dict, now: datet
         created = parse_ts(row["published_at"])
         ch = Channel(cid, row["title"], m.days_between(now, created) if created else None,
                      last["subs"] if last else None, last["video_count"] if last else None)
+        if hist:
+            ch.views_per_day = m.rate_per_day(hist, "views", mc["rate_target_days"], mc["rate_min_days"])
+            ch.subs_per_day = m.rate_per_day(hist, "subs", mc["rate_target_days"], mc["rate_min_days"])
+        ch.uploads_known = bool(row["uploads_fetched_at"])
+        ch.recent_views_per_day = sum(
+            v.views_per_day for v in by_channel.get(cid, [])
+            if v.published and m.days_between(now, v.published) < mc["evergreen_min_age_days"])
 
         mature_long = sorted(
             (v for v in by_channel.get(cid, [])
@@ -210,11 +234,16 @@ def build_channels(store: Store, videos: dict[str, Video], cfg: dict, now: datet
             ch.one_hit = bool(ch.n_long >= mc["one_hit_min_videos"] and ch.top2_share is not None
                               and ch.top2_share > mc["one_hit_top2_share"])
             ch.growth_ratio = m.growth_ratio(views)
-            ch.median_interval, ch.days_since_last = m.cadence([v.published for v in mature_long], now)
-            ch.possible_demonetized = m.possible_demonetized(
-                ch.n_long, ch.median_interval, ch.days_since_last,
-                mc["demonet_max_median_interval_days"], mc["demonet_min_gap_days"],
-                mc["demonet_gap_multiplier"])
+            # cadence needs the channel's real upload list: from a few search hits a big channel that uploads
+            # daily looks "silent" (live 11.10: 9 of 36 flags, incl. Peppa Pig Official with 44.8M subs)
+            if ch.uploads_known:
+                ch.median_interval, ch.days_since_last = m.cadence([v.published for v in mature_long], now)
+                ch.possible_demonetized = m.possible_demonetized(
+                    ch.n_long, ch.median_interval, ch.days_since_last,
+                    mc["demonet_max_median_interval_days"], mc["demonet_min_gap_days"],
+                    mc["demonet_gap_multiplier"])
+                ch.content_farm = m.content_farm(ch.n_long, ch.median_interval, mc["farm_max_interval_days"],
+                                                 mc["farm_min_videos"])
             titles = [v.title for v in mature_long]
             ch.template_score = m.template_score(titles, mc["template_min_titles"])
             ch.numbered_share = m.numbered_share(titles)
@@ -241,7 +270,7 @@ def build_channels(store: Store, videos: dict[str, Video], cfg: dict, now: datet
     return channels
 
 
-SCORED_STATUSES = ("seed", "active", "candidate", "chart", "manual")  # not retired / dormant
+SCORED_STATUSES = ("seed", "active", "candidate", "chart", "manual", "category")  # not retired / dormant
 AUTO_ORIGINS = ("discovered", "cluster", "claude")                      # may go dormant
 
 
@@ -260,17 +289,20 @@ def window_videos(videos: dict[str, Video], cfg: dict, now: datetime) -> list[Vi
     return out
 
 
+def is_established(ch: Channel, nc: dict) -> bool:
+    """В1: a competitor that has already taken its place — big, or old and mid-size (11.10 audit)."""
+    return ((ch.subs or 0) >= nc["established_min_subs"]
+            or ((ch.age_days or 0) >= nc["established_min_age_days"]
+                and (ch.subs or 0) >= nc["established_aged_min_subs"]))
+
+
 def score_group(key: str, direction: str, origin: str, status: str, parent: str | None,
                 vids: list[Video], channels: dict[str, Channel], cfg: dict, now: datetime) -> Niche:
     nc = cfg["niche"]
     scored_flags = set(nc["scored_risk_flags"])
     chans = {v.channel_id for v in vids}
     hit_chans = {v.channel_id for v in vids if v.views >= cfg["enrich"]["min_hit_views"]}
-    established = sum(
-        1 for c in hit_chans if c in channels and (
-            (channels[c].subs or 0) >= nc["established_min_subs"]
-            or ((channels[c].age_days or 0) >= nc["established_min_age_days"]
-                and (channels[c].subs or 0) >= nc["established_aged_min_subs"])))
+    established = sum(1 for c in hit_chans if c in channels and is_established(channels[c], nc))
     newcomers = sorted(c for c in chans if c in channels and channels[c].indicator)
     serial = [channels[c].seriality for c in chans if c in channels and channels[c].seriality is not None]
     window_views = sum(v.views for v in vids)
@@ -299,6 +331,9 @@ def score_group(key: str, direction: str, origin: str, status: str, parent: str 
     # floor on the older rate: a theme with no older videos is "new", not infinitely accelerating
     momentum = (fresh / fresh_days) / max(older / older_days, cfg["metrics"]["momentum_floor_views_per_day"])
     demonetized = sum(1 for c in chans if c in channels and channels[c].possible_demonetized)
+    durations = [v.duration_s for v in vids if v.duration_s]
+    evergreen = m.evergreen_share([channels[c].evergreen_pair for c in sorted(chans)
+                                   if c in channels and channels[c].evergreen_pair is not None])
     return Niche(
         key, direction, origin, status, parent, len(vids), window_views,
         sum(v.views_per_day for v in vids), len(chans), established, len(newcomers), med_serial,
@@ -311,7 +346,9 @@ def score_group(key: str, direction: str, origin: str, status: str, parent: str 
         velocity_measured_share=sum(v.velocity_measured for v in vids) / len(vids),
         fresh_views=fresh, momentum=round(momentum, 2),
         top_video_share=(ordered[0].views / window_views) if window_views else 0.0,
-        demonetized_channels=demonetized)
+        demonetized_channels=demonetized,
+        median_minutes=(median(durations) / 60) if durations else None,
+        evergreen_share=evergreen)
 
 
 def _ranked(niches: list[Niche]) -> list[Niche]:

@@ -76,14 +76,20 @@ class YouTubeClient:
             raise ApiError(f"{endpoint}: HTTP {resp.status_code} {reason}".rstrip(), resp.status_code, reason)
         raise ApiError(f"{endpoint}: retries exhausted")
 
-    def search_videos(self, query: str, published_after: str, duration: str,
+    def search_videos(self, query: str | None, published_after: str, duration: str,
                       region: str, language: str, page_token: str | None = None,
-                      order: str = "viewCount") -> dict:
+                      order: str = "viewCount", category_id: str | None = None) -> dict:
+        """Keyword search, or — with `category_id` and no query — the category's top videos of the
+        window (В2: Viewstats «Top Videos → Long → страна + категория → за месяц»)."""
         params = {
-            "part": "snippet", "q": query, "type": "video", "order": order,
+            "part": "snippet", "type": "video", "order": order,
             "publishedAfter": published_after, "videoDuration": duration,
             "regionCode": region, "relevanceLanguage": language, "maxResults": 50,
         }
+        if query:
+            params["q"] = query
+        if category_id:
+            params["videoCategoryId"] = category_id
         if page_token:
             params["pageToken"] = page_token
         return self._get("search", params, bucket="search")

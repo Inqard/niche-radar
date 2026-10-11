@@ -18,17 +18,23 @@ Once a day (`python -m niche_radar run`):
 1. **Searches** recent long-form videos (4–20 min and >20 min, last 30 days, US region, English) for a configurable
    list of topic keywords — the creator's own directions plus a broad map of long-form YouTube areas
    (history, science, machines, true crime, nature, games, …), see `radar.toml`.
-2. **Reads the "most popular" charts** by category for US, GB, CA and AU.
+2. **Reads the "most popular" charts** by category for US, GB, CA and AU, and the **top long videos of the month
+   in every category without a keyword** (`search.list` + `videoCategoryId`) — what nobody thought to search for.
 3. **Reads public metadata and statistics** of the videos and channels found (views, likes, comments, subscribers,
    publication dates, durations, tags, categories), and the latest uploads, public featured-channel sections and
    public subscriptions of small, fast-growing channels.
 4. **Groups videos into topics** (shared tags and title phrases) and ranks topics by views in the last 30 days,
    by momentum (last 14 days vs the 16 before) and by an "opportunity" index (demand × new channels × crowding × seriality).
-5. **Flags patterns worth knowing** before choosing a topic: templated or numbered series, content labelled
-   "made for kids", channels that suddenly stopped uploading, medical/political/adult-bait keywords —
-   so a creator can avoid producing mass-produced or unsuitable content.
-6. Writes `data/reports/radar-<date>.md` plus CSV exports. Figures taken from YouTube are shown as returned by the API;
-   the tool's own indices are labelled as such.
+5. **Flags patterns worth knowing** before choosing a topic: templated or numbered series, content-farm cadence
+   (two or more long videos a day), content labelled "made for kids" or disclosed as realistic AI, channels that
+   suddenly stopped uploading, medical/political/adult-bait keywords — so a creator can avoid producing
+   mass-produced or unsuitable content.
+6. Shows whether a topic is **evergreen or a passing hype** (share of the channels' daily views that comes from
+   videos older than 30 days) and the typical video length.
+7. Writes `data/reports/radar-<date>.md` with a **card per leading topic** (every competing channel with its daily
+   growth, the top five videos to improve on, common tags, competitors' publishing hours, a Google Trends link to
+   check by hand) plus CSV exports, including all competitors of every topic. Figures taken from YouTube are shown
+   as returned by the API; the tool's own indices are labelled as such.
 
 Discovery grows on its own: phrases shared by successful videos of several channels become new search keywords,
 and channels recommended by (or publicly subscribed to by) growing channels are added to the graph.
@@ -59,7 +65,7 @@ git clone https://github.com/Inqard/niche-radar.git
 cd niche-radar
 pip install -r requirements.txt
 copy .env.example .env      # then put YOUTUBE_API_KEY=... inside
-python -m pytest -q         # 79 offline tests, no key needed
+python -m pytest -q         # 88 offline tests, no key needed
 python -u -m niche_radar run
 ```
 

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import copy
+import csv
 import json
 from datetime import datetime, timedelta, timezone
 
@@ -13,18 +14,19 @@ from niche_radar.db import Store, iso, quota_day
 from niche_radar.links import parse_many
 from niche_radar.pipeline import QuotaMeter, rescore, run
 from niche_radar.report import write_outputs
+from niche_radar.scoring import window_videos
 
 DAY1 = datetime(2026, 10, 10, 12, tzinfo=timezone.utc)
 
 
-def video(vid, ch, title, published, views, tags=(), cat="27", kids=False, minutes=12):
+def video(vid, ch, title, published, views, tags=(), cat="27", kids=False, minutes=12, synthetic=False):
     return {
         "id": vid,
         "snippet": {"channelId": ch, "title": title, "description": "", "publishedAt": iso(published),
                     "tags": list(tags), "categoryId": cat, "defaultAudioLanguage": "en"},
         "statistics": {"viewCount": str(views), "likeCount": "1", "commentCount": "1"},
         "contentDetails": {"duration": f"PT{minutes}M"},
-        "status": {"madeForKids": kids},
+        "status": {"madeForKids": kids, "containsSyntheticMedia": synthetic},
         "topicDetails": {"topicCategories": ["https://en.wikipedia.org/wiki/Knowledge"]},
         "paidProductPlacementDetails": {"hasPaidProductPlacement": False},
     }
@@ -46,6 +48,7 @@ class FakeWorld:
         self.uploads: dict[str, list[str]] = {}
         self.search: dict[str, list[str]] = {}
         self.charts: dict[str, list[str]] = {}
+        self.category_search: dict[str, list[str]] = {}
         d = lambda days: now - timedelta(days=days)
 
         def add(ch, title, created, subs, vids, query=None, search_last=None):
@@ -91,7 +94,8 @@ class FakeWorld:
         add("SPACE1", "Cosmos Now", d(900), 200_000, [
             video("sp1", "SPACE1", "Black Holes Are Stranger Than You Think", d(3), 1_000_000, tags=["space facts"])])
         add("SPACE2", "Star Notes", d(500), 100_000, [
-            video("sp2", "SPACE2", "The Edge of the Universe", d(4), 3_000_000, tags=["space facts"])])
+            video("sp2", "SPACE2", "The Edge of the Universe", d(4), 3_000_000, tags=["space facts"],
+                  synthetic=True)])                       # the author disclosed realistic AI footage
         self.charts["27"] = ["sp1", "sp2"]
         # 11.10: a trending Short on an indicator channel must not seed discovery as direction 'unknown'
         self.videos["new_short"] = video("new_short", "NEW", "Why We Say Pizza", d(2), 2_000_000,
@@ -132,6 +136,22 @@ class FakeWorld:
             video(f"nar{i}", "NARROW", f"How {w} Compilers Work", d(30 - 7 * i), v)
             for i, (w, v) in enumerate(zip(["C", "Rust", "Go", "Zig"], [4000, 12000, 30000, 45000]))],
             query="game lore explained")
+        # В2 category tops: reachable ONLY through the keyword-free category search (no query, no chart).
+        # FARM uploads a long video every ~7 hours (В1: «по 2–3 ролика в день — контент-ферма»).
+        self.channels["FARM"] = channel("FARM", "Bridge Facts Daily", d(60), 50_000, 8)
+        self.uploads["UUFARM"] = []
+        for i in range(8):
+            v = video(f"farm{i}", "FARM", f"How This Bridge Was Built {i}", d(4 + 0.3 * i), 120_000 - 5_000 * i,
+                      cat="28", tags=["bridge engineering"])
+            self.videos[v["id"]] = v
+            self.uploads["UUFARM"].append(v["id"])
+        self.category_search["28"] = [f"farm{i}" for i in range(8)]
+        # live 11.10: a 5M-sub official channel seen only through 5 old chart hits looked "silent";
+        # it is too big for its uploads to be fetched, so we do not know its real cadence
+        add("OFFICIAL", "Official Cartoon Channel", d(3000), 5_000_000, [
+            video(f"off{i}", "OFFICIAL", f"Official Clip Number {i}", d(24 - 2 * i), 400_000, cat="24")
+            for i in range(5)])
+        self.charts["24"].extend(f"off{i}" for i in range(5))
         # live run: risky outliers (adult-adjacent) must not seed new queries even with a shared tag
         for k in range(2):
             add(f"RISK{k}", f"Attraction Code {k}", d(25), 8_000, [
@@ -153,12 +173,13 @@ class FakeClient:
         self.on_call(bucket)
 
     def search_videos(self, query, published_after, duration, region, language, page_token=None,
-                      order="viewCount"):
+                      order="viewCount", category_id=None):
         self._tick("search")
         self.orders = getattr(self, "orders", [])
         self.orders.append((query, order))
         after = datetime.fromisoformat(published_after.replace("Z", "+00:00"))
-        ids = [i for i in self.world.search.get(query, [])
+        source = self.world.category_search.get(category_id, []) if category_id else self.world.search.get(query, [])
+        ids = [i for i in source
                if datetime.fromisoformat(self.world.videos[i]["snippet"]["publishedAt"].replace("Z", "+00:00")) >= after]
         return {"items": [{"id": {"videoId": i}} for i in ids]}
 
@@ -203,6 +224,7 @@ def cfg():
     c["explore_directions"] = {}            # the broad map is tested in test_planner; here only 2 seeds
     c["charts"]["category_ids"] = ["27", "24"]
     c["charts"]["regions"] = ["US"]
+    c["category_search"]["category_ids"] = []  # category tops are tested on their own (test_category_top_*)
     c["search"]["durations"] = ["medium"]
     # tiny world: the 'word origins' theme covers ~35% of all window videos; with thousands of real
     # videos a sub-niche is a few percent, so the production cut-off (0.2) stays in radar.toml
@@ -473,6 +495,71 @@ def test_retention_deletes_statistics_older_than_30_days(day1, cfg):
     # nothing dangling: every hit/upload/related row still points at an existing entity
     assert store.conn.execute("SELECT count(*) FROM hits WHERE video_id NOT IN (SELECT video_id FROM videos)").fetchone()[0] == 0
     assert store.conn.execute("SELECT count(*) FROM related WHERE dst NOT IN (SELECT channel_id FROM channels)").fetchone()[0] == 0
+
+
+# --- docs/VIDEO-COVERAGE.md: methods added after the full-transcript audit (11.10.2026) ---------------
+
+def test_category_top_search_reaches_what_no_keyword_found(cfg, tmp_path):
+    # В2: Viewstats «Top Videos → Long → категория → месяц»; FARM is in no query and no chart
+    cfg["category_search"].update(category_ids=["28"], durations=["medium"])
+    store = Store(tmp_path / "radar.sqlite")
+    meter = QuotaMeter(store, DAY1)
+    client = FakeClient(FakeWorld(DAY1), meter)
+    result = run(client, store, cfg, DAY1, meter)
+    assert (None, "viewCount") in client.orders                              # searched without a keyword
+    top = next(n for n in result.niches if n.query == "category:28")
+    assert top.origin == "category" and set(top.video_ids) == {f"farm{i}" for i in range(8)}
+    # feeds the population the niches by meaning are built from (a one-channel group is not a niche itself)
+    assert "farm0" in {v.video_id for v in window_videos(result.videos, cfg, DAY1)}
+    assert store.queries(("category",))[0]["query"] == "category:28"          # not retired like a stale seed
+    farm = result.channels["FARM"]
+    assert farm.content_farm and farm.median_interval < 0.5                  # В1: «2–3 ролика в день»
+    text = write_outputs(result, cfg, tmp_path / "reports").read_text(encoding="utf-8")
+    assert "## 10a." in text and "Science & Technology (категория 28)" in text
+    assert "конвейер ≥ 2 видео/день" in text
+    store.close()
+
+
+def test_silence_is_judged_only_when_the_upload_list_is_known(day1):
+    _, _, _, result, _ = day1
+    official = result.channels["OFFICIAL"]
+    assert official.n_long == 5 and not official.uploads_known
+    assert not official.possible_demonetized and official.days_since_last is None
+    assert result.channels["DEMON"].uploads_known and result.channels["DEMON"].possible_demonetized
+
+
+def test_author_ai_label_becomes_a_flag(day1):
+    _, _, _, result, _ = day1
+    assert "ai_label" in result.videos["sp2"].flags and "ai_label" not in result.videos["sp1"].flags
+
+
+def test_cards_list_all_competitors_ideas_tags_and_trends_link(day1, cfg):
+    _, _, _, result, tmp_path = day1
+    text = write_outputs(result, cfg, tmp_path / "reports").read_text(encoding="utf-8")
+    assert "## 3a. Карточки подниш" in text and "trends.google.com/trends/explore" in text
+    assert "Топ-5 видео" in text and "Частые теги" in text and "восточное время США" in text
+    with open(tmp_path / "reports" / "competitors-2026-10-10.csv", encoding="utf-8-sig") as f:
+        rows = list(csv.DictReader(f))
+    new = [r for r in rows if r["channel_id"] == "NEW"]
+    assert new and {r["role"] for r in new} == {"новичок-индикатор"}
+    assert all(int(r["views_in_niche"]) > 0 for r in rows)
+
+
+def test_channel_growth_per_day_and_evergreen_share_after_two_snapshots(day1, cfg):
+    world, store, _, _, _ = day1
+    world.grow(1.1)
+    world.channels["NEW"]["statistics"]["viewCount"] = str(1 + 5_000_000)  # +5M channel views in a day
+    day2 = DAY1 + timedelta(days=1)
+    meter = QuotaMeter(store, day2)
+    result = run(FakeClient(world, meter), store, cfg, day2, meter)
+    new = result.channels["NEW"]
+    assert new.views_per_day == pytest.approx(5_000_000) and new.uploads_known
+    recent = sum(v.views_per_day for v in result.videos.values()
+                 if v.channel_id == "NEW" and v.published > day2 - timedelta(days=30))
+    assert new.evergreen_pair == (pytest.approx(5_000_000), pytest.approx(recent))
+    ety = niche(result, "etymology")
+    assert ety.evergreen_share is not None and 0 <= ety.evergreen_share <= 1
+    assert ety.median_minutes == pytest.approx(12)
 
 
 def test_claude_answer_saved_with_bom_and_broken_json(day1, cfg):

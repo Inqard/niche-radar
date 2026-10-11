@@ -72,6 +72,45 @@ def possible_demonetized(n_videos: int, median_interval: float | None, days_sinc
     return days_since_last >= max(min_gap, multiplier * median_interval)
 
 
+def content_farm(n_videos: int, median_interval: float | None, max_interval: float, min_videos: int) -> bool:
+    """Long videos at ≥ 2 a day (В1 54:52: «часовые ролики по 2–3 в день — контент-ферма»)."""
+    return n_videos >= min_videos and median_interval is not None and median_interval <= max_interval
+
+
+def rate_per_day(history: list, key: str, target_days: float, min_days: float) -> float | None:
+    """Daily growth of a counter between the latest snapshot and the one closest to `target_days` earlier
+    (vidIQ «за 7 дней», В1 27:19). None until two snapshots are at least `min_days` apart."""
+    if len(history) < 2 or history[-1][key] is None:
+        return None
+    latest = history[-1]
+    latest_ts = _ts(latest["ts"])
+    best, best_gap = None, None
+    for row in history[:-1]:
+        if row[key] is None:
+            continue
+        span = days_between(latest_ts, _ts(row["ts"]))
+        if span >= min_days and (best_gap is None or abs(span - target_days) < best_gap):
+            best, best_gap = row, abs(span - target_days)
+    if best is None:
+        return None
+    return (latest[key] - best[key]) / days_between(latest_ts, _ts(best["ts"]))
+
+
+def _ts(value: str) -> datetime:
+    return datetime.fromisoformat(value.replace("Z", "+00:00"))
+
+
+def evergreen_share(channel_rates: list[tuple[float, float]]) -> float | None:
+    """Share of the channels' current daily views that comes from videos older than the window:
+    (channel views/day, views/day of its videos inside the window) per channel. High = old videos keep
+    earning (вечнозелёная тема, В1/В5); near 0 = the views live only on fresh videos (хайп/событие, В4)."""
+    total = sum(max(ch, 0.0) for ch, _ in channel_rates)
+    if total <= 0:
+        return None
+    old = sum(max(ch - recent, 0.0) for ch, recent in channel_rates if ch > 0)
+    return min(old / total, 1.0)
+
+
 def title_skeleton(title: str) -> str:
     words = _WORD_RE.findall(re.sub(r"\d+", "#", title.lower()))
     return " ".join(words[:3])
