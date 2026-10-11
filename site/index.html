@@ -4,72 +4,82 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Niche Radar</title>
-  <style>
-    :root { --bg: #ffffff; --fg: #1a1a1a; --muted: #5a5a5a; --line: #e4e4e4; --accent: #1a73e8; }
-    @media (prefers-color-scheme: dark) {
-      :root:not([data-theme="light"]) { --bg: #121212; --fg: #ededed; --muted: #a8a8a8; --line: #2c2c2c; --accent: #8ab4f8; }
-    }
-    :root[data-theme="dark"] { --bg: #121212; --fg: #ededed; --muted: #a8a8a8; --line: #2c2c2c; --accent: #8ab4f8; }
-    body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-    header, main, footer { max-width: 760px; margin: 0 auto; padding: 0 16px; }
-    header { display: flex; justify-content: space-between; align-items: center; padding-top: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
-    nav a { margin-left: 16px; color: var(--accent); text-decoration: none; }
-    h1 { font-size: 1.6rem; margin: 28px 0 8px; } h2 { font-size: 1.15rem; margin-top: 28px; }
-    .muted { color: var(--muted); }
-    .attribution { display: flex; align-items: center; gap: 12px; margin: 20px 0; padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px; }
-    .attribution img { height: 24px; width: auto; }
-    footer { border-top: 1px solid var(--line); margin-top: 40px; padding: 16px; font-size: 0.9rem; color: var(--muted); }
-    footer a { color: var(--accent); }
-    ul { padding-left: 20px; }
-  </style>
+  <meta name="description" content="Free, open-source research tool for independent YouTube creators: which long-form topics audiences watch, how crowded they are, and which new channels are growing.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header>
-    <strong>Niche Radar</strong>
-    <nav><a href="privacy.html">Privacy Policy</a><a href="terms.html">Terms of Service</a></nav>
-  </header>
-  <main>
-    <h1>Niche Radar</h1>
-    <p class="muted">A free, open-source research tool for independent creators: it monitors publicly available YouTube statistics and shows which long-form topics audiences are watching, how crowded each topic is, and which new channels are growing — so a creator can plan videos from evidence.</p>
-    <p>Source code and documentation: <a href="https://github.com/Inqard/niche-radar" rel="noopener">github.com/Inqard/niche-radar</a> (MIT license). Each creator runs the tool on their own computer with their own Google Cloud project and API key.</p>
-
-    <div class="attribution">
-      <!-- Branding guidelines: the app is nonfunctional without YouTube -> the official "developed with YouTube"
-           logo, unmodified and clickable; light variant on light backgrounds, dark variant in dark mode.
-           Source: https://developers.google.com/youtube/terms/branding-guidelines -->
-      <a href="https://www.youtube.com" rel="noopener" aria-label="YouTube">
-        <picture>
-          <source srcset="developed-with-youtube-sentence-case-dark.png" media="(prefers-color-scheme: dark)">
-          <img src="developed-with-youtube-sentence-case-light.png" alt="developed with YouTube">
-        </picture>
-      </a>
-      <span>This application uses <strong>YouTube API Services</strong>. All video and channel data in its reports is sourced from YouTube.</span>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="index.html"><span class="dot"></span>Niche Radar</a>
+      <nav><a href="privacy.html">Privacy Policy</a><a href="terms.html">Terms of Service</a><a href="https://github.com/Inqard/niche-radar" rel="noopener">GitHub</a></nav>
     </div>
+  </header>
 
-    <h2>What it does</h2>
-    <ul>
-      <li>Reads <em>public</em> data only: video titles, descriptions, tags, publication dates, durations and public statistics (views, likes, comments); public channel metadata and statistics; public channel sections and subscriptions; "most popular" charts.</li>
-      <li>Groups recent long-form videos into topics and ranks topics by audience interest, so the creator can decide what to make next.</li>
-      <li>Flags patterns a creator should know about before choosing a topic — templated or numbered series, content labelled "made for kids", channels that suddenly stopped uploading — to help creators avoid producing mass-produced or unsuitable content.</li>
-      <li>Runs once a day on the creator's own computer as a command-line tool. There are no accounts, no sign-in and no hosted service.</li>
-    </ul>
+  <main>
+    <section class="hero wrap">
+      <span class="badge">Open source · MIT</span>
+      <h1>See what audiences are watching before you pick your next video.</h1>
+      <p class="lead">Niche Radar is a free research tool for independent creators. It monitors publicly available YouTube statistics and shows which long-form topics people watch, how crowded each topic already is, and which new channels are growing — so you can plan videos from evidence instead of guesswork.</p>
+      <div class="actions">
+        <a class="btn primary" href="https://github.com/Inqard/niche-radar" rel="noopener">View the source on GitHub</a>
+        <a class="btn" href="privacy.html">Privacy Policy</a>
+      </div>
+      <p class="lead" style="font-size:.98rem">Each creator runs the tool on their own computer with their own Google Cloud project and API key. There is no hosted service and no account.</p>
 
-    <h2>What it does not do</h2>
-    <ul>
-      <li>It does not access any private or user-authorized data and does not use OAuth.</li>
-      <li>It does not download, cache or store any video or audio content.</li>
-      <li>It does not scrape YouTube; all data is retrieved exclusively through the official YouTube Data API.</li>
-      <li>It does not publish, sell or share the retrieved data; reports stay on the creator's computer.</li>
-      <li>Public statistics are kept for at most 30 days and are then refreshed or deleted.</li>
-    </ul>
+      <div class="attribution">
+        <!-- Branding guidelines: the app is nonfunctional without YouTube -> official "developed with YouTube" logo,
+             unmodified and clickable. Google names the files by logo colour: "dark" = dark logo for light backgrounds,
+             "light" = white logo for dark backgrounds. Source: https://developers.google.com/youtube/terms/branding-guidelines -->
+        <a href="https://www.youtube.com" rel="noopener" aria-label="YouTube">
+          <picture>
+            <source srcset="developed-with-youtube-sentence-case-light.png" media="(prefers-color-scheme: dark)">
+            <img src="developed-with-youtube-sentence-case-dark.png" alt="developed with YouTube">
+          </picture>
+        </a>
+        <p>This application uses <strong>YouTube API Services</strong>. All video and channel data in its reports is sourced from YouTube.</p>
+      </div>
+    </section>
 
-    <h2>Contact</h2>
-    <p>Developer: <strong>Pavel</strong> (GitHub: Inqard) · <a href="mailto:Inqardwastaken@gmail.com">Inqardwastaken@gmail.com</a> · <a href="https://github.com/Inqard/niche-radar/issues" rel="noopener">GitHub issues</a></p>
+    <section class="wrap">
+      <h2>How it works</h2>
+      <div class="grid">
+        <div class="card">
+          <h3><span class="pill ok">✓</span>What it does</h3>
+          <ul>
+            <li>Reads <em>public</em> data only: video titles, descriptions, tags, publication dates, durations and public statistics (views, likes, comments); public channel metadata and statistics; public channel sections and subscriptions; "most popular" charts.</li>
+            <li>Groups recent long-form videos into topics and ranks them by audience interest, momentum over the last two weeks and how crowded they are.</li>
+            <li>Flags patterns worth knowing before choosing a topic — templated or numbered series, content labelled "made for kids", channels that suddenly stopped uploading — to help creators avoid mass-produced or unsuitable content.</li>
+            <li>Runs once a day as a command-line tool and writes a local report. No accounts, no sign-in, no hosted service.</li>
+          </ul>
+        </div>
+        <div class="card">
+          <h3><span class="pill no">✕</span>What it does not do</h3>
+          <ul>
+            <li>It does not access any private or user-authorized data and does not use OAuth.</li>
+            <li>It does not download, cache or store any video or audio content.</li>
+            <li>It does not scrape YouTube; all data is retrieved exclusively through the official YouTube Data API.</li>
+            <li>It does not publish, sell or share the retrieved data; reports stay on the creator's computer.</li>
+            <li>Public statistics are kept for at most 30 days and are then refreshed or deleted.</li>
+          </ul>
+        </div>
+      </div>
+
+      <h2>Contact</h2>
+      <p class="contact">Developer: <strong>Pavel</strong> (GitHub: Inqard) · <a href="mailto:Inqardwastaken@gmail.com">Inqardwastaken@gmail.com</a> · <a href="https://github.com/Inqard/niche-radar/issues" rel="noopener">GitHub issues</a></p>
+    </section>
   </main>
-  <footer>
-    <a href="privacy.html">Privacy Policy</a> · <a href="terms.html">Terms of Service</a> ·
-    <a href="https://www.youtube.com/t/terms" rel="noopener">YouTube Terms of Service</a> ·
-    <a href="https://policies.google.com/privacy" rel="noopener">Google Privacy Policy</a>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>© 2026 Pavel (Inqard) · Niche Radar is not affiliated with YouTube or Google.</span>
+      <span>
+        <a href="privacy.html">Privacy Policy</a> · <a href="terms.html">Terms of Service</a> ·
+        <a href="https://www.youtube.com/t/terms" rel="noopener">YouTube Terms of Service</a> ·
+        <a href="https://policies.google.com/privacy" rel="noopener">Google Privacy Policy</a>
+      </span>
+    </div>
   </footer>
 </body>
 </html>
