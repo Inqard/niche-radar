@@ -4,52 +4,52 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Niche Radar — Terms of Service</title>
-  <style>
-    :root { --bg: #ffffff; --fg: #1a1a1a; --muted: #5a5a5a; --line: #e4e4e4; --accent: #1a73e8; }
-    @media (prefers-color-scheme: dark) {
-      :root:not([data-theme="light"]) { --bg: #121212; --fg: #ededed; --muted: #a8a8a8; --line: #2c2c2c; --accent: #8ab4f8; }
-    }
-    :root[data-theme="dark"] { --bg: #121212; --fg: #ededed; --muted: #a8a8a8; --line: #2c2c2c; --accent: #8ab4f8; }
-    body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-    header, main, footer { max-width: 760px; margin: 0 auto; padding: 0 16px; }
-    header { display: flex; justify-content: space-between; align-items: center; padding-top: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
-    nav a { margin-left: 16px; color: var(--accent); text-decoration: none; }
-    h1 { font-size: 1.6rem; margin: 28px 0 8px; } h2 { font-size: 1.15rem; margin-top: 28px; }
-    .muted { color: var(--muted); } a { color: var(--accent); }
-    footer { border-top: 1px solid var(--line); margin-top: 40px; padding: 16px; font-size: 0.9rem; color: var(--muted); }
-  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <header>
-    <strong><a href="index.html" style="text-decoration:none;color:inherit">Niche Radar</a></strong>
-    <nav><a href="privacy.html">Privacy Policy</a><a href="terms.html">Terms of Service</a></nav>
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="index.html"><span class="dot"></span>Niche Radar</a>
+      <nav><a href="privacy.html">Privacy Policy</a><a href="terms.html" aria-current="page">Terms of Service</a><a href="https://github.com/Inqard/niche-radar" rel="noopener">GitHub</a></nav>
+    </div>
   </header>
+
   <main>
-    <h1>Terms of Service</h1>
-    <p class="muted">Last updated: October 11, 2026</p>
+    <article class="doc wrap">
+      <h1>Terms of Service</h1>
+      <p class="meta">Last updated: October 11, 2026</p>
 
-    <h2>1. Scope</h2>
-    <p>Niche Radar ("the application") is free, open-source software developed by <strong>Pavel</strong> (GitHub: Inqard) and published under the MIT License at <a href="https://github.com/Inqard/niche-radar" rel="noopener">github.com/Inqard/niche-radar</a>. It is distributed as source code only; each creator runs it on their own computer with their own Google Cloud project and API key. There is no hosted service and no account. This website describes the application for transparency and compliance purposes.</p>
+      <h2>1. Scope</h2>
+      <p>Niche Radar ("the application") is free, open-source software developed by <strong>Pavel</strong> (GitHub: Inqard) and published under the MIT License at <a href="https://github.com/Inqard/niche-radar" rel="noopener">github.com/Inqard/niche-radar</a>. It is distributed as source code only; each creator runs it on their own computer with their own Google Cloud project and API key. There is no hosted service and no account. This website describes the application for transparency and compliance purposes.</p>
 
-    <h2>2. YouTube API Services</h2>
-    <p>The application uses YouTube API Services. Its operation is subject to the <a href="https://www.youtube.com/t/terms" rel="noopener">YouTube Terms of Service</a>, the <a href="https://developers.google.com/youtube/terms/api-services-terms-of-service" rel="noopener">YouTube API Services Terms of Service</a> and the <a href="https://developers.google.com/youtube/terms/developer-policies" rel="noopener">YouTube API Services Developer Policies</a>. Data handling is described in the <a href="privacy.html">Privacy Policy</a> and in the <a href="https://policies.google.com/privacy" rel="noopener">Google Privacy Policy</a>.</p>
+      <h2>2. YouTube API Services</h2>
+      <p>The application uses YouTube API Services. Its operation is subject to the <a href="https://www.youtube.com/t/terms" rel="noopener">YouTube Terms of Service</a>, the <a href="https://developers.google.com/youtube/terms/api-services-terms-of-service" rel="noopener">YouTube API Services Terms of Service</a> and the <a href="https://developers.google.com/youtube/terms/developer-policies" rel="noopener">YouTube API Services Developer Policies</a>. Data handling is described in the <a href="privacy.html">Privacy Policy</a> and in the <a href="https://policies.google.com/privacy" rel="noopener">Google Privacy Policy</a>.</p>
 
-    <h2>3. Data</h2>
-    <p>All YouTube data used by the application is publicly available data retrieved through the official API. YouTube is the source of that data; the developer makes no claim of ownership over it and does not resell or redistribute it.</p>
+      <h2>3. Data</h2>
+      <p>All YouTube data used by the application is publicly available data retrieved through the official API. YouTube is the source of that data; the developer makes no claim of ownership over it and does not resell or redistribute it.</p>
 
-    <h2>4. Responsibilities of people who run the application</h2>
-    <p>Whoever runs the application is the operator of their own API project and is responsible for complying with the YouTube API Services Terms of Service and Developer Policies, including quota limits, the 30-day retention rule implemented in the application, and the requirement not to scrape YouTube or circumvent quotas.</p>
+      <h2>4. Responsibilities of people who run the application</h2>
+      <p>Whoever runs the application is the operator of their own API project and is responsible for complying with the YouTube API Services Terms of Service and Developer Policies, including quota limits, the 30-day retention rule implemented in the application, and the requirement not to scrape YouTube or circumvent quotas.</p>
 
-    <h2>5. No warranty</h2>
-    <p>The software and its reports are provided "as is", without warranty of any kind, under the terms of the MIT License. Reports are research estimates for content planning. Figures taken from YouTube are shown as returned by the API; the application's own indices are labelled as its own calculations.</p>
+      <h2>5. No warranty</h2>
+      <p>The software and its reports are provided "as is", without warranty of any kind, under the terms of the MIT License. Reports are research estimates for content planning. Figures taken from YouTube are shown as returned by the API; the application's own indices are labelled as its own calculations.</p>
 
-    <h2>6. Contact</h2>
-    <p><strong>Pavel</strong> (independent developer, GitHub: Inqard) · <a href="mailto:Inqardwastaken@gmail.com">Inqardwastaken@gmail.com</a> · <a href="https://github.com/Inqard/niche-radar/issues" rel="noopener">github.com/Inqard/niche-radar/issues</a></p>
+      <h2>6. Contact</h2>
+      <p><strong>Pavel</strong> (independent developer, GitHub: Inqard) · <a href="mailto:Inqardwastaken@gmail.com">Inqardwastaken@gmail.com</a> · <a href="https://github.com/Inqard/niche-radar/issues" rel="noopener">github.com/Inqard/niche-radar/issues</a></p>
+    </article>
   </main>
-  <footer>
-    <a href="index.html">Home</a> · <a href="privacy.html">Privacy Policy</a> ·
-    <a href="https://www.youtube.com/t/terms" rel="noopener">YouTube Terms of Service</a> ·
-    <a href="https://policies.google.com/privacy" rel="noopener">Google Privacy Policy</a>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <span>© 2026 Pavel (Inqard) · Niche Radar is not affiliated with YouTube or Google.</span>
+      <span>
+        <a href="index.html">Home</a> · <a href="privacy.html">Privacy Policy</a> ·
+        <a href="https://www.youtube.com/t/terms" rel="noopener">YouTube Terms of Service</a> ·
+        <a href="https://policies.google.com/privacy" rel="noopener">Google Privacy Policy</a>
+      </span>
+    </div>
   </footer>
 </body>
 </html>
