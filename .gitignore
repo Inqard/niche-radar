@@ -1,0 +1,12 @@
+# secrets and local data
+.env
+data/
+
+# operator-only material (personal context, application texts) — not part of the public tool
+research/
+docs/QUOTA-REQUEST.md
+
+# python
+__pycache__/
+.pytest_cache/
+*.pyc

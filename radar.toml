@@ -1,0 +1,395 @@
+# Niche Radar — конфигурация. Пороги и веса — стартовые гипотезы (см. docs/RADAR-SPEC.md),
+# калибруются по данным. Источник каждого правила указан в комментарии.
+
+[search]
+region = "US"
+language = "en"
+# Порядок выдачи чередуется при каждом повторе запроса: viewCount показывает крупные каналы,
+# relevance — другой срез (11.10: один viewCount давал наклон к уже большим каналам)
+orders = ["viewCount", "relevance"]
+window_days = 30              # В1: «сок» — последние 2 недели; берём 30, чтобы видеть и серийность
+durations = ["medium", "long"] # medium = 4–20 мин, long = >20 мин (Shorts не ищем)
+pages_per_query = 1           # 1 страница = 50 видео = 1 вызов search.list
+max_calls_per_run = 80        # лимит search.list — 100 вызовов/сутки, оставляем запас
+daily_search_limit = 100
+
+[retention]
+# YouTube API Services Developer Policies III.E.4: публичную статистику (Non-Authorized Data) нельзя
+# хранить дольше 30 дней — снимки старше удаляются, видео/каналы без обновления за 30 дней удаляются.
+# Хранение дольше (для расчёта роста за квартал) — только после одобрения по разделу III.L (заявка).
+days = 30
+
+[schedule]
+requery_days = 4              # запросы интересов ([directions]) — раз в N дней
+explore_requery_days = 10     # запросы широкой карты ([explore_directions]) — реже, их много
+explore_durations = ["medium"] # широкая карта: только 4–20 мин (основной формат безликих каналов)
+explore_share = 0.4           # доля бюджета поиска на новые (автонайденные) подниши
+refresh_window_days = 30      # статистику найденных видео обновляем ежедневно (дёшево) столько дней (= retention)
+
+[discovery]
+min_channels = 2              # фраза-подниша должна встречаться у ≥ 2 разных каналов
+min_views = 30000             # учитываем видео-источники от стольких просмотров
+max_new_per_run = 15          # сколько новых кандидатов добавлять за запуск
+# Разнообразие (живой прогон 11.10: ESL дал 11 из 15 кандидатов — самоусиление одной темы):
+max_new_per_direction = 4     # не больше N новых кандидатов одного направления за запуск
+max_source_risk_share = 0.25  # кластеры с долей рисковых видео выше — не источник новых запросов
+min_words = 2
+max_words = 4
+dormant_after_runs = 3        # подниша с низким score столько запусков подряд → dormant
+dormant_score = 3.0
+# Слова, которые не образуют подниш сами по себе
+stopwords = [
+  "the", "a", "an", "and", "or", "of", "to", "in", "on", "for", "with", "is", "are", "was", "were",
+  "how", "why", "what", "when", "who", "this", "that", "these", "those", "you", "your", "my", "i",
+  "it", "its", "we", "they", "their", "be", "can", "will", "just", "about", "from", "by", "at", "as",
+  "video", "videos", "youtube", "new", "best", "top", "full", "official", "ever", "most", "vs",
+  "shorts", "part", "episode", "ep", "no", "not", "do", "does", "did", "has", "have", "had",
+  # + 11.10: живой прогон дал кандидата «then he»
+  "then", "he", "she", "him", "her", "his", "hers", "them", "us", "our", "me", "if", "so", "but",
+  "than", "there", "after", "before", "out", "up", "down", "into", "over", "all", "more", "much",
+  "very", "even", "still", "too", "s", "t", "re", "ll", "ve", "d", "m",
+  # + 11.10 второй срез: кластеры «get», «doing», «here's»
+  "get", "gets", "got", "getting", "doing", "going", "went", "come", "came", "take", "took", "see",
+  "here's", "that's", "it's", "what's", "there's", "don't", "can't", "won't", "didn't", "isn't", "i'm",
+  "you're", "we're", "they're", "let's", "who's", "how's",
+]
+
+# Кликбейт и общие слова: фраза только из них подниши не образует ('never knew', 'crazy facts'),
+# а запрос-кандидат не может с них начинаться ('complete game', 'weird origin' — модификатор, а не тема).
+# Слова, которые бывают частью настоящих тем (world war, medieval times, first world war), сюда не входят.
+generic_words = [
+  "never", "knew", "know", "need", "actually", "really", "insane", "crazy", "secret", "secrets",
+  "truth", "shocking", "explained", "things", "thing", "everything", "nobody", "story", "stories",
+  "facts", "minutes", "hours", "biggest", "worst", "weird", "strange", "real", "behind", "here",
+  "made", "make", "ultimate", "complete", "guide", "way", "ways", "should", "would", "could", "every",
+  "one", "only",
+]
+# С этих слов поисковый запрос начинаться не может ('complete game', 'actually works'). Жанровые слова
+# 'weird', 'secret', 'dark', 'strange', 'real', 'lost' сюда НЕ входят: 'weird animals', 'secret societies' —
+# настоящие подниши (11.10: прежнее правило блокировало их).
+query_head_blocklist = [
+  "never", "knew", "know", "need", "actually", "really", "insane", "crazy", "shocking", "nobody",
+  "things", "thing", "everything", "minutes", "hours", "here", "made", "make", "should", "would", "could",
+  "every", "one", "only", "ultimate", "complete", "explained", "guide", "best", "top", "new", "most",
+  "biggest", "worst", "finally", "simply",
+]
+
+[related]                     # похожие каналы: рекомендованные + публичные подписки (docs/RADAR-SPEC.md, v2)
+# Граф каналов — главный рычаг широты без поисковой квоты (2 ед. на канал из 10 000/сутки)
+max_seed_channels = 80        # от скольких каналов (индикаторы, выбросы) расширяемся за запуск
+max_new_channels = 150        # сколько новых похожих каналов обогащать за запуск
+use_subscriptions = true
+
+[clusters]                    # подниши по смыслу (v2)
+join_similarity = 0.25        # косинус TF-IDF для присоединения видео к кластеру
+merge_similarity = 0.5        # слияние кластеров с близкими центрами
+max_df_share = 0.2            # термин у > 20% видео окна — слишком общий
+centroid_terms = 40
+min_videos = 3
+min_channels = 2
+max_title_ngram = 2
+
+[claude]                      # контур Claude без платного API (v2)
+export_clusters = 40
+import_priority = 10.0        # приоритет запросов, предложенных Claude (выше автонайденных)
+
+[charts]
+# videos.list chart=mostPopular для США: 1=Film&Animation 2=Autos 15=Pets&Animals 20=Gaming
+# 24=Entertainment 26=Howto&Style 28=Science&Technology 22=People&Blogs 23=Comedy 25=News&Politics
+# 17=Sports 10=Music. Проверено 11.10.2026: 27=Education и 19=Travel для US отдают 404, 29 даёт 2 видео.
+# Все рабочие категории — чтобы видеть ниши за пределами интересов без наклона; стоимость 1 ед. каждая.
+category_ids = ["28", "20", "15", "2", "1", "24", "26", "22", "23", "25", "17", "10"]
+# Тренды всей англоязычной аудитории, не только США (1 ед. на категорию × регион)
+regions = ["US", "GB", "CA", "AU"]
+
+[enrich]
+max_subs = 500000             # каналы крупнее — уже не «окно возможностей», загрузки не тянем
+min_hit_views = 20000         # канал-кандидат должен иметь видео в окне с ≥ стольких просмотров
+max_channels = 400            # 2 ед. квоты на канал (playlistItems + videos)
+
+[metrics]
+long_min_seconds = 240        # длинное видео = от 4 мин (как videoDuration=medium у API)
+fresh_days = 14               # В1: «последние 2 недели — сок»; импульс = свежие/сутки ÷ старые/сутки
+hype_min_fresh_views = 200000 # в рейтинг «хайп сейчас» попадают подниши с ≥ стольких просмотров за 14 дн
+momentum_floor_views_per_day = 5000 # нижняя планка «старой» скорости: тема без старых видео = новая, не ∞
+one_hit_share = 0.7           # В4: > 70% просмотров группы у одного ролика — прострел, а не ниша (раздел 2b)
+min_video_age_days = 3        # свежайшие видео не учитываем в метриках канала
+seriality_fraction = 0.25     # «хит» = ≥ 25% лучшего видео канала
+one_hit_top2_share = 0.7      # В4: канал держится на 1–2 идеях
+one_hit_min_videos = 5
+template_min_titles = 5
+demonet_max_median_interval_days = 7
+demonet_min_gap_days = 14     # В1: «часто выкладывал — и 2 недели тишина»
+demonet_gap_multiplier = 3
+
+[outlier]
+min_views = 50000
+min_views_per_sub = 3.0
+
+[indicator]                   # канал-индикатор (В1 + В2)
+max_age_days = 120            # В2: ≤ 2 мес.; расширено
+min_videos = 3
+max_videos = 60               # В2: 10–50
+max_subs = 100000             # В1: каналы до 100K
+min_best_views = 100000
+min_growth_ratio = 5.0
+# 11.10 аудит: порог 100K отсекал 403 из 497 молодых каналов — наклон к массовым нишам (ESL, развлечения).
+# Третий путь для узких ниш: хит ≥ 30K при просмотрах ≥ 10× подписчиков (В1: «мало подписчиков, большие просмотры»)
+relative_min_best_views = 30000
+relative_min_views_per_sub = 10.0
+
+[niche]
+established_min_subs = 100000
+established_min_age_days = 365
+# 11.10 аудит: без этого 691 «закрепившийся конкурент» имел < 20K подписчиков (медиана 9.5K) —
+# канал-старожил без аудитории не конкурент (В1: «закрепившиеся» = давно забирают трафик)
+established_aged_min_subs = 20000
+# RPM по категории — только справочная колонка «RPM-ориентир», в рейтинг не входит (оператор 11.10:
+# «деньги приходят за просмотры; можно меньше за 1000, но больше просмотров»).
+max_established = 6           # В1: > 5–6 закрепившихся = переполнено
+newcomer_weight = 0.5
+newcomer_cap = 5
+# Флаги риска считаются и показываются (доля видео), но в рейтинг НЕ входят (оператор 11.10:
+# «отбираем топ по просмотрам, решение за мной»). Также: рисковые видео не порождают новые запросы.
+scored_risk_flags = ["medical", "politics", "kids", "adult_bait", "animal_rescue", "made_for_kids"]
+english_only = true
+
+# Медианы RPM AIR Media-Tech 2026 (research/03 §2), сопоставленные с категориями YouTube грубо.
+# Справочно (колонка «RPM-ориентир»); категорию ставит сам автор, поэтому в рейтинг не входит.
+# 28 Science&Technology → Gadgets&Tech (консервативно: научные объяснения могут быть ближе к Education).
+[rpm_by_category]
+"1" = 2.43   # Film & Animation → Entertainment
+"2" = 5.69   # Autos & Vehicles → Transport (мало каналов в выборке)
+"10" = 2.28  # Music
+"15" = 2.30  # Pets & Animals → нет в AIR, медиана всех ниш
+"17" = 1.23  # Sports → Health & Sport
+"19" = 2.98  # Travel & Events → Lifestyle
+"20" = 2.05  # Gaming
+"22" = 2.43  # People & Blogs → Entertainment
+"23" = 2.43  # Comedy → Entertainment
+"24" = 2.43  # Entertainment
+"25" = 2.60  # News & Politics
+"26" = 2.98  # Howto & Style → Lifestyle
+"27" = 10.22 # Education → Education & Science
+"28" = 2.33  # Science & Technology → Gadgets & Tech
+"default" = 2.30
+
+# Направления = наши интересы (research/01 §11.2, research/03 §6). Каждый запрос = отдельная подниша.
+[directions]
+tech_explainers = [
+  "how does it work engineering explained",
+  "megaprojects explained",
+  "history of computers",
+  "tech failures history",
+  "how the internet works",
+  "vintage technology history",
+]
+ai = [
+  "ai explained",
+  "how ai works",
+  "ai tools tutorial",
+  "ai video generation tutorial",
+  "ai automation tutorial",
+]
+# 11.10: направления выровнены до 6 запросов (было 4 — наклон к education/storytelling/tech)
+programming = [
+  "programming explained",
+  "software bugs that cost millions",
+  "history of programming languages",
+  "how code works under the hood",
+  "software history documentary",
+  "hacking explained",
+]
+languages = [
+  "etymology",
+  "history of the english language",
+  "why english spelling is weird",
+  "language history documentary",
+  "linguistics explained",
+  "how languages evolve",
+]
+animals = [
+  "animal intelligence",
+  "weird animals documentary",
+  "deep sea creatures",
+  "animal behavior explained",
+  "ocean animals documentary",
+  "how animals survive",
+]
+games_adult = [
+  "video game history",
+  "game lore explained",
+  "retro games",
+  "game industry documentary",
+  "game design explained",
+  "gaming documentary",
+]
+# Добавлено 11.10.2026 по запросу оператора: истории, обучение, техника.
+# Истории: документальная подача. «Reddit stories» (зачитка чужих постов на фоне геймплея)
+# сознательно не берём — reused/inauthentic content (research/01 §6).
+storytelling = [
+  "true story documentary",
+  "historical mysteries",
+  "unsolved mysteries",
+  "dark history",
+  "survival stories",
+  "biography documentary",
+]
+# Обучение: Education & Science — медиана RPM $10.22, максимум среди ниш (research/03 §2)
+education = [
+  "science explained",
+  "physics explained",
+  "math explained",
+  "how things work",
+  "psychology explained",
+  "learn english",
+  "educational documentary",
+]
+# Техника: устройства, машины, транспорт. Обзоры гаджетов монетизируются слабо (Gadgets & Tech
+# $2.33, рекламу видят 34% просмотров), транспорт — сильнее ($5.69) → упор на объяснения, не обзоры.
+machines = [
+  "gadgets explained",
+  "how cars work",
+  "heavy machinery",
+  "aviation explained",
+  "military technology explained",
+  "smartphone history",
+]
+
+# Рынок США: видео для других рынков не участвуют в оценке ниш, индикаторах, выбросах, автопоиске
+# и похожих каналах. Введено после первого живого прогона 11.10.2026: 27% видео окна — не английские
+# (фильтруются по audio_lang), но часть помечена авторами как 'en' ошибочно: индийские экзаменационные
+# билеты («12th Physics Quarterly Question Paper 2026», «2nd PUC…»), названия на малаялам/хинди.
+[market]
+exclude_non_latin_titles = true   # буквы не латиницей в названии при audio_lang=en → другой рынок
+exclude_keywords = [
+  "question paper", "quarterly exam", "half yearly", "board exam", "cbse", "ncert", "icse", "puc",
+  "upsc", "ssc", "neet", "jee", "tnpsc", "class 5", "class 6", "class 7", "class 8", "class 9",
+  "class 10", "class 11", "class 12", "in hindi", "in urdu", "in tamil", "in telugu", "in bangla",
+  "hindi", "urdu", "tamil", "telugu", "malayalam", "kannada", "bangla", "marathi", "gujarati", "punjabi",
+  # + 11.10 второй прогон: кенийские/западноафриканские экзамены
+  "knec", "kcse", "kpsea", "waec", "jamb", "neco",
+  # + 11.10: хинглиш латиницей («kaise banaye» = «как сделать») проходил как английский
+  "kaise", "kya", "kyun", "kyu", "hai", "hain", "nahi", "wala", "wale", "bhai", "sabse", "kaun", "aur",
+  "banaye", "karo", "karne", "tarika", "jankari", "hindi mein", "urdu mein",
+]
+
+# Флаги риска (research/03 §4). Совпадение по целому слову/фразе, без учёта регистра.
+[risk_keywords]
+# 11.10 аудит: bare "doctor" ловил Doctor Strange / Doctor Who / игровой лор → только медицинские обороты
+medical = ["doctor explains", "doctor reveals", "doctors warn", "doctors don't", "doctors won't", "your doctor",
+           "symptoms", "cure", "cancer", "diabetes", "blood pressure", "remedy", "remedies", "supplement",
+           "weight loss", "urologist", "cardiologist"]
+politics = ["trump", "biden", "election", "democrats", "republicans", "kim jong un", "putin"]
+kids = ["for kids", "nursery", "kids songs", "cocomelon", "toddler"]
+# + 11.10: живой прогон поднял «female psychology» с роликом «Why Men Love Kissing Down There» на 1-е место
+adult_bait = ["sexy", "bikini", "onlyfans", "thirst trap", "intimacy", "seduction", "seduce", "sexual",
+              "down there", "kissing", "turn her on", "aroused", "lust"]
+# 11.10 аудит: bare "rescue" ловил спасателей WTC и мультики → только «спасение животных»
+animal_rescue = ["animal rescue", "rescue dog", "rescue cat", "rescue puppy", "rescue kitten", "rescued animal",
+                 "rescues a", "rescued a", "ticks", "covered in thousands", "wild animals know"]
+# Информационные флаги (в штраф риска не входят, см. niche.scored_risk_flags):
+# чужая франшиза — обзор с комментарием допустим; криминал — true crime монетизируется,
+# но жестокие детали ограничивают рекламу → смотреть глазами.
+franchise_ip = ["minecraft", "roblox", "gta", "pokemon", "simpsons", "marvel", "disney", "star wars", "harry potter"]
+violent_crime = ["murder", "murdered", "serial killer", "homicide", "kidnapping", "massacre"]
+
+# Сигналы денег вне рекламы YouTube (research/02 §4)
+[monetization_patterns]
+patreon = ["patreon.com"]
+tips = ["ko-fi.com", "buymeacoffee.com"]
+digital_products = ["gumroad.com", "payhip.com", "stan.store"]
+affiliate = ["amzn.to", "amazon.com/", "affiliate", "commission"]
+sponsor = ["sponsored by", "use code", "promo code", "thanks to our sponsor"]
+
+# ============================================================================================
+# ШИРОКАЯ КАРТА НИШ (11.10.2026, оператор: «абсолютно все ниши и подниши — что реально хайпует»).
+# Не интересы, а вся длинная безликая часть YouTube. Ищутся реже ([schedule].explore_requery_days),
+# только 4–20 мин. Каждый запрос — вход в направление; подниши внутри находит автопоиск и граф каналов.
+# Покрытие ограничено квотой search.list (100/сутки): полный круг ~10 дней. Чтобы было быстрее —
+# заявка Google на расширение квоты (бесплатно, см. README).
+# ============================================================================================
+[explore_directions]
+# Сквозные форматы — срез хайпа поверх всех тем (то, что Деймин делал поиском «за эту неделю»)
+formats = [
+  "documentary", "explained", "full documentary", "the untold story", "what happened to",
+  "iceberg explained", "video essay", "deep dive", "animated story", "things you didn't know",
+  "top 10", "timeline", "ranked", "every type of", "behind the scenes",
+]
+history = [
+  "ancient history", "medieval history", "world war 2 documentary", "cold war history",
+  "american history", "lost civilizations", "archaeology discoveries", "royal history",
+  "pirates history", "ancient rome", "ancient greece", "vikings history",
+]
+science_space = [
+  "space documentary", "black holes explained", "universe explained", "mars mission",
+  "evolution explained", "chemistry explained", "biology explained", "geology documentary",
+  "volcanoes", "dinosaurs documentary", "nuclear energy explained",
+]
+money_business = [
+  "business documentary", "company collapse", "billionaire story", "scams exposed",
+  "economics explained", "stock market history", "corporate scandal", "startup story",
+  "crypto explained", "why companies fail",
+]
+crime_mystery = [
+  "true crime", "cold case", "heist story", "con artist", "cult documentary",
+  "prison documentary", "mafia history", "unsolved disappearance", "detective stories",
+]
+people_celebrity = [
+  "celebrity biography", "hollywood scandal", "royal family", "athlete biography",
+  "musician biography", "where are they now", "child star", "rise and fall",
+]
+mind_health = [
+  "psychology facts", "body language", "sleep science", "nutrition explained",
+  "brain explained", "stoicism", "philosophy explained", "habits", "productivity",
+]
+home_lifestyle = [
+  "tiny house", "van life", "off grid living", "homesteading", "woodworking",
+  "home renovation", "gardening", "cooking documentary", "street food", "restoration",
+]
+travel_geography = [
+  "geography explained", "country comparison", "abandoned places", "urban exploration",
+  "megacities", "dangerous places", "borders explained", "maps explained", "islands",
+]
+cars_transport = [
+  "car history", "supercars", "trucks documentary", "trains documentary", "ships documentary",
+  "aviation disasters", "crash tests", "electric cars", "motorcycles", "f1 history",
+]
+military = [
+  "military documentary", "special forces", "tanks documentary", "navy documentary",
+  "war stories", "weapons documentary", "battle analysis", "fighter jets", "submarines",
+]
+movies_tv = [
+  "movie explained", "ending explained", "tv series recap", "anime explained",
+  "comics explained", "film analysis", "horror stories", "scary stories", "mythology explained",
+]
+sports = [
+  "sports documentary", "boxing history", "mma documentary", "football documentary",
+  "nba documentary", "olympics history", "extreme sports", "sports scandal", "chess",
+]
+tech_misc = [
+  "cybersecurity", "hacking stories", "pc build", "smart home", "drones", "robots",
+  "3d printing", "gadget review", "tech documentary",
+]
+music_art = [
+  "music history", "album review", "art history", "design explained", "photography tips",
+  "guitar lesson", "music theory",
+]
+nature_pets = [
+  "nature documentary", "ocean documentary", "wildlife", "dog training", "cat facts",
+  "aquarium", "insects", "weather documentary", "survival skills",
+]
+gaming_sub = [
+  "minecraft", "roblox", "gta", "fortnite", "horror games", "speedrun", "game theory",
+  "esports", "indie games", "gaming news",
+]
+paranormal = [
+  "paranormal documentary", "ufo documentary", "ghost stories", "cryptids", "ancient mysteries",
+  "conspiracy explained",
+]
+kids_family = [
+  "kids cartoon", "nursery rhymes", "toy review", "bedtime stories", "kids learning",
+]
+faith_society = [
+  "bible stories", "religion explained", "geopolitics", "news explained", "political analysis",
+]
