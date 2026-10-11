@@ -59,7 +59,7 @@ git clone https://github.com/Inqard/niche-radar.git
 cd niche-radar
 pip install -r requirements.txt
 copy .env.example .env      # then put YOUTUBE_API_KEY=... inside
-python -m pytest -q         # 78 offline tests, no key needed
+python -m pytest -q         # 79 offline tests, no key needed
 python -u -m niche_radar run
 ```
 
