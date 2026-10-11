@@ -380,13 +380,15 @@ def build_cluster_niches(store: Store, videos: dict[str, Video], channels: dict[
     direction_of = {q["query"]: q["direction"] for q in store.queries()}
     names = store.cluster_names()
     niches = []
-    for c in cluster_docs(docs, cc, generic):
+    # one-channel groups are kept apart as kind "solo" (В4: «он единственный, кто закрепился — создал поднишу»;
+    # live 11.10: 49% of the window's views sat outside multi-channel clusters, incl. 22M on a 12K-sub channel)
+    for c in cluster_docs(docs, cc, generic, keep_single_channel=True):
         vids = [eligible[i] for i in c.video_ids]
         queries = Counter(q for v in vids for q in sorted(v.queries))
         directions = Counter(direction_of[q] for v in vids for q in sorted(v.queries) if q in direction_of)
         direction = min(directions.items(), key=lambda kv: (-kv[1], kv[0]))[0] if directions else "related"
         n = score_group(c.key, direction, "cluster", "cluster", None, vids, channels, cfg, now)
-        n.kind, n.terms = "cluster", c.terms
+        n.kind, n.terms = ("cluster" if c.channels >= cc["min_channels"] else "solo"), c.terms
         n.sources = [q for q, _ in sorted(queries.items(), key=lambda kv: (-kv[1], kv[0]))[:5]]
         if c.label in names:
             n.name, n.verdict = names[c.label]["name"], names[c.label]["verdict"]

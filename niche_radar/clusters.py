@@ -72,7 +72,10 @@ def _centroid(total: dict[str, float], keep: int) -> dict[str, float]:
     return _normalized(dict(top))
 
 
-def cluster_docs(docs: list[Doc], cfg: dict, generic: set[str] | frozenset = frozenset()) -> list[Cluster]:
+def cluster_docs(docs: list[Doc], cfg: dict, generic: set[str] | frozenset = frozenset(),
+                 keep_single_channel: bool = False) -> list[Cluster]:
+    """Clusters with ≥ min_channels channels; with `keep_single_channel` also one-channel groups of
+    ≥ min_videos videos, keyed "solo:<label>" after all multi-channel keys (so those keys never shift)."""
     n = len(docs)
     if n == 0:
         return []
@@ -130,25 +133,38 @@ def cluster_docs(docs: list[Doc], cfg: dict, generic: set[str] | frozenset = fro
 
     clusters: list[Cluster] = []
     labels: Counter[str] = Counter()
+    solo: list[tuple[int, list[Doc]]] = []
     for root in sorted(groups):
         docs_in = [d for i in groups[root] for d in members[i]]
         channels = {d.channel_id for d in docs_in}
-        if len(docs_in) < cfg["min_videos"] or len(channels) < cfg["min_channels"]:
+        if len(docs_in) < cfg["min_videos"]:
             continue
-        total: dict[str, float] = {}
-        for i in groups[root]:
-            for t, w in totals[i].items():
-                total[t] = total.get(t, 0.0) + w
-        terms = [t for t, _ in sorted(total.items(), key=lambda kv: (-kv[1], kv[0]))[:TOP_TERMS]]
-        # name: a multi-word term without clickbait words ('game lore', not 'complete game')
-        label = (next((t for t in terms[:5] if " " in t and not set(t.split()) & generic), None)
-                 or next((t for t in terms[:5] if " " in t), terms[0]))
-        labels[label] += 1
-        key = label if labels[label] == 1 else f"{label} #{labels[label]}"
-        stats = {}
-        for t in terms:
-            with_term = [d for d in docs_in if t in d.terms]
-            stats[t] = (len({d.channel_id for d in with_term}), sum(d.views for d in with_term))
-        ordered = sorted(docs_in, key=lambda d: (-d.views, d.video_id))
-        clusters.append(Cluster(key, label, terms, [d.video_id for d in ordered], len(channels), stats))
+        if len(channels) < cfg["min_channels"]:
+            if keep_single_channel and len(channels) == 1:
+                solo.append((root, docs_in))
+            continue
+        clusters.append(_build(groups[root], docs_in, totals, generic, labels, ""))
+    solo_labels: Counter[str] = Counter()
+    clusters += [_build(groups[root], docs_in, totals, generic, solo_labels, "solo:") for root, docs_in in solo]
     return clusters
+
+
+def _build(group: list[int], docs_in: list[Doc], totals: list[dict[str, float]], generic, labels: Counter,
+           prefix: str) -> Cluster:
+    total: dict[str, float] = {}
+    for i in group:
+        for t, w in totals[i].items():
+            total[t] = total.get(t, 0.0) + w
+    terms = [t for t, _ in sorted(total.items(), key=lambda kv: (-kv[1], kv[0]))[:TOP_TERMS]]
+    # name: a multi-word term without clickbait words ('game lore', not 'complete game')
+    label = (next((t for t in terms[:5] if " " in t and not set(t.split()) & generic), None)
+             or next((t for t in terms[:5] if " " in t), terms[0]))
+    labels[label] += 1
+    key = prefix + (label if labels[label] == 1 else f"{label} #{labels[label]}")
+    stats = {}
+    for t in terms:
+        with_term = [d for d in docs_in if t in d.terms]
+        stats[t] = (len({d.channel_id for d in with_term}), sum(d.views for d in with_term))
+    ordered = sorted(docs_in, key=lambda d: (-d.views, d.video_id))
+    channels = len({d.channel_id for d in docs_in})
+    return Cluster(key, label, terms, [d.video_id for d in ordered], channels, stats)

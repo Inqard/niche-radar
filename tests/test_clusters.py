@@ -56,6 +56,17 @@ def test_single_channel_topic_is_not_a_subniche():
     assert all(not any(v.startswith("s") for v in c.video_ids) for c in cluster_docs(docs, CC))
 
 
+def test_single_channel_topic_is_kept_apart_on_request_without_shifting_other_keys():
+    # live 11.10: 49% of window views sat outside multi-channel clusters, incl. 22M on a 12K-sub channel
+    docs = [doc(f"s{i}", "SOLO", f"Solo Topic Part {i}", ["solo topic"]) for i in range(4)] + corpus()
+    plain = cluster_docs(docs, CC)
+    both = cluster_docs(docs, CC, keep_single_channel=True)
+    solo = [c for c in both if c.channels == 1]
+    assert len(solo) == 1 and solo[0].key.startswith("solo:") and set(solo[0].video_ids) == {f"s{i}" for i in range(4)}
+    assert [(c.key, c.video_ids) for c in both if c.channels > 1] == [(c.key, c.video_ids) for c in plain]
+    assert all(not v.startswith("x") for c in both for v in c.video_ids)   # 1-video "groups" are still no topic
+
+
 def test_result_does_not_depend_on_input_order():
     base = cluster_docs(corpus(), CC)
     for seed in range(5):

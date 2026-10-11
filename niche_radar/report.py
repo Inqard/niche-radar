@@ -13,7 +13,7 @@ from urllib.parse import quote
 
 from .claude_io import export_for_claude
 from .pipeline import CATEGORY_PREFIX, RunResult
-from .scoring import Channel, Niche, Video, is_established
+from .scoring import Channel, Niche, Video, is_established, window_videos
 
 try:  # В1 34:18: publish 2–3 h before competitors -> their hours in US Eastern time
     from zoneinfo import ZoneInfo
@@ -193,6 +193,47 @@ def _channel_flags(ch: Channel) -> str:
     return ", ".join(flags) or "—"
 
 
+def _solo_section(result: RunResult, top_n: int) -> list[str]:
+    """One-channel sub-niches: a theme with ≥ 3 videos and no competitor in our sample (В4 33:47: «он
+    единственный закрепился — создал поднишу»; В1 34:03: «один конкурент, ниша хайпует — залетит»)."""
+    rows = ["| # | Тема | Канал | Подписчики | Возраст, дн. | Просм. 30 дн | Просм. 14 дн | Видео | "
+            "Просм./подписч. | Индикатор | Мин. | Пометки | Пример |",
+            "|---|---|---|---|---|---|---|---|---|---|---|---|---|"]
+    ranked = sorted(result.solo_clusters, key=lambda n: (-n.window_views, n.query))
+    for i, n in enumerate(ranked[:top_n], 1):
+        ch = result.channels.get(result.videos[n.video_ids[0]].channel_id) if n.video_ids else None
+        per_sub = n.window_views / ch.subs if ch and ch.subs else None
+        example = _vlink(n.top_videos[0]) if n.top_videos else "—"
+        rows.append(
+            f"| {i} | **{_esc(n.query.removeprefix('solo:'), 34)}** | "
+            f"{f'[{_esc(ch.title, 28)}]({ch.url})' if ch else '—'} | {_num(ch.subs if ch else None)} | "
+            f"{_num(ch.age_days if ch else None)} | {_num(n.window_views)} | {_num(n.fresh_views)} | {n.n_videos} | "
+            f"{_num(per_sub, 1)} | {'✅' if ch and ch.indicator else '—'} | {_num(n.median_minutes)} | "
+            f"{_channel_flags(ch) if ch else '—'} | {example} |")
+    if not ranked:
+        rows.append("| — |" + " |" * 12)
+    return rows
+
+
+def unclustered(result: RunResult, cfg: dict) -> list[Video]:
+    """Window videos in no sub-niche and no one-channel topic — one-offs; listed so nothing in the sample is lost."""
+    covered = {i for n in result.clusters + result.solo_clusters for i in n.video_ids}
+    return sorted((v for v in window_videos(result.videos, cfg, result.now) if v.video_id not in covered),
+                  key=lambda v: (-v.views, v.video_id))
+
+
+def _unclustered_section(result: RunResult, cfg: dict, top_n: int) -> list[str]:
+    rows = ["| Видео | Канал | Подписчики | Просмотры | Просм./подписч. | Мин. | Возраст, дн. | Флаги |",
+            "|---|---|---|---|---|---|---|---|"]
+    for v in unclustered(result, cfg)[:top_n]:
+        ch = result.channels.get(v.channel_id)
+        age = (result.now - v.published).total_seconds() / 86400 if v.published else None
+        rows.append(f"| {_vlink(v)} | {_esc(ch.title if ch else v.channel_id, 28)} | {_num(v.subs)} | "
+                    f"{_num(v.views)} | {_num(v.views_per_sub, 1)} | {_num((v.duration_s or 0) / 60)} | {_num(age)} | "
+                    f"{', '.join(sorted(v.flags)) or '—'} |")
+    return rows
+
+
 def _related_section(result: RunResult) -> list[str]:
     by_dst: dict[str, dict] = {}
     for r in result.related:
@@ -253,7 +294,8 @@ def render_markdown(result: RunResult, cfg: dict, top_n: int = 25) -> str:
         f"- Запуск #{result.run_id}: search.list {result.calls.get('search', 0)} из бюджета {result.search_budget}, "
         f"прочие вызовы API {result.calls.get('default', 0)}.",
         f"- Видео в базе: {len(result.videos)} (скорость по снимкам: {measured}; не для рынка США — исключены "
-        f"из оценки: {other_market}), каналов: {len(result.channels)}, подниш по смыслу: {len(clusters)}, "
+        f"из оценки: {other_market}), каналов: {len(result.channels)}, подниш по смыслу: {len(clusters)} "
+        f"(+ тем одного канала: {len(result.solo_clusters)}), "
         f"подниш-запросов: {len(niches)}, трендовых категорий: {len(trending)}.",
         f"- Похожих каналов добавлено: {len(result.related_new)}; импортировано каналов вручную: "
         f"{len(result.imported_channels)}.",
@@ -288,6 +330,16 @@ def render_markdown(result: RunResult, cfg: dict, top_n: int = 25) -> str:
             "По В4 это ещё не ниша — но так начинаются новые ниши: смотреть, появятся ли у темы другие "
             "каналы и видео в следующих прогонах.", ""]
     out += _rows(by_single[:top_n])
+    out += ["", f"## 2c. Темы одного канала — топ-{top_n} по просмотрам (конкурентов в выборке нет)", "",
+            "≥ 3 видео одного канала на общую тему, которую больше никто в нашей выборке не снимает. По В4 так "
+            "выглядит канал, который «создал поднишу» и держит её один; по В1 одиночный простреливающий новичок — "
+            "сигнал заходить. Проверить вручную: правда ли конкурентов нет (поиск YouTube по теме) или мы их "
+            "пока не нашли.", ""] + _solo_section(result, top_n)
+    out += ["", f"## 2d. Ролики вне тем — топ-{top_n} по просмотрам", "",
+            "Видео окна, которые не сложились ни в поднишу, ни в тему одного канала: разовые хиты (часто крупных "
+            "авторов) и редкие темы. Нишей это ещё не является, но показывает спрос на тему. Полный список — "
+            "`unclustered-<дата>.csv`; вместе с поднишами и темами одного канала он покрывает всю выборку.", ""]
+    out += _unclustered_section(result, cfg, top_n)
     out += ["", f"## 2a. Подниши по смыслу — топ-{top_n} по скорости (просмотров в сутки)", ""] + _rows(by_speed[:top_n])
     out += ["", f"## 3. Подниши по смыслу — топ-{top_n} по окну возможностей (мало закрепившихся, есть новые)", ""]
     out += _rows(by_window[:top_n])
@@ -401,6 +453,27 @@ def write_outputs(result: RunResult, cfg: dict, out_dir: Path) -> Path:
                         n.score, n.rpm_prior, round(n.money_share, 3), round(n.risk_share, 3),
                         round(n.kids_share, 3), "; ".join(f"{k}:{v}" for k, v in n.flag_counts.items()),
                         "; ".join(n.terms), "; ".join(n.sources), n.median_minutes, n.evergreen_share])
+
+    with open(out_dir / f"solo-{stamp}.csv", "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.writer(f)
+        w.writerow(["key", "channel_id", "channel", "subs", "age_days", "window_views", "fresh_views", "n_videos",
+                    "indicator", "median_minutes", "terms", "top_video"])
+        for n in sorted(result.solo_clusters, key=lambda n: (-n.window_views, n.query)):
+            v = result.videos.get(n.video_ids[0]) if n.video_ids else None
+            ch = result.channels.get(v.channel_id) if v else None
+            w.writerow([n.query, v.channel_id if v else "", ch.title if ch else "", ch.subs if ch else "",
+                        ch.age_days if ch else "", n.window_views, n.fresh_views, n.n_videos,
+                        ch.indicator if ch else "", n.median_minutes, "; ".join(n.terms), v.url if v else ""])
+
+    with open(out_dir / f"unclustered-{stamp}.csv", "w", newline="", encoding="utf-8-sig") as f:
+        w = csv.writer(f)
+        w.writerow(["video_id", "title", "channel_id", "channel", "subs", "views", "views_per_sub", "minutes",
+                    "published_at", "flags", "url"])
+        for v in unclustered(result, cfg):
+            ch = result.channels.get(v.channel_id)
+            w.writerow([v.video_id, v.title, v.channel_id, ch.title if ch else "", v.subs, v.views, v.views_per_sub,
+                        round((v.duration_s or 0) / 60, 1), v.published.isoformat() if v.published else "",
+                        "; ".join(sorted(v.flags)), v.url])
 
     # В1: «собрать всех конкурентов, выписать в таблицу» — every sub-niche by meaning, every channel in it
     with open(out_dir / f"competitors-{stamp}.csv", "w", newline="", encoding="utf-8-sig") as f:

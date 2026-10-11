@@ -15,19 +15,21 @@ and never touches private data.
 
 Once a day (`python -m niche_radar run`):
 
-1. **Searches** recent long-form videos (4–20 min and >20 min, last 30 days, US region, English) for a configurable
-   list of topic keywords — the creator's own directions plus a broad map of long-form YouTube areas
-   (history, science, machines, true crime, nature, games, …), see `radar.toml`.
+1. **Searches** recent long-form videos (4вЂ“20 min and >20 min, last 30 days, US region, English) for a configurable
+   list of topic keywords вЂ” the creator's own directions plus a broad map of long-form YouTube areas
+   (history, science, machines, true crime, nature, games, вЂ¦), see `radar.toml`.
 2. **Reads the "most popular" charts** by category for US, GB, CA and AU, and the **top long videos of the month
-   in every category without a keyword** (`search.list` + `videoCategoryId`) — what nobody thought to search for.
+   in every category without a keyword** (`search.list` + `videoCategoryId`) вЂ” what nobody thought to search for.
 3. **Reads public metadata and statistics** of the videos and channels found (views, likes, comments, subscribers,
    publication dates, durations, tags, categories), and the latest uploads, public featured-channel sections and
    public subscriptions of small, fast-growing channels.
 4. **Groups videos into topics** (shared tags and title phrases) and ranks topics by views in the last 30 days,
-   by momentum (last 14 days vs the 16 before) and by an "opportunity" index (demand × new channels × crowding × seriality).
+   by momentum (last 14 days vs the 16 before) and by an "opportunity" index (demand Г— new channels Г— crowding Г— seriality).
+   Topics covered by a single channel and one-off videos are listed separately, so every video in the sample
+   appears in exactly one list.
 5. **Flags patterns worth knowing** before choosing a topic: templated or numbered series, content-farm cadence
    (two or more long videos a day), content labelled "made for kids" or disclosed as realistic AI, channels that
-   suddenly stopped uploading, medical/political/adult-bait keywords — so a creator can avoid producing
+   suddenly stopped uploading, medical/political/adult-bait keywords вЂ” so a creator can avoid producing
    mass-produced or unsuitable content.
 6. Shows whether a topic is **evergreen or a passing hype** (share of the channels' daily views that comes from
    videos older than 30 days) and the typical video length.
@@ -45,7 +47,7 @@ and channels recommended by (or publicly subscribed to by) growing channels are 
   methods and `chart=mostPopular`.
 - **Official API only.** No scraping of youtube.com; the tool deliberately does not read "related videos"
   or the home page.
-- **Retention ≤ 30 days.** Statistics snapshots older than 30 days and any video/channel record not refreshed
+- **Retention в‰¤ 30 days.** Statistics snapshots older than 30 days and any video/channel record not refreshed
   within 30 days are deleted on every run (`[retention]` in `radar.toml`, `Store.prune()`).
 - **No audiovisual content** is downloaded or stored. No data is sold, shared or published.
 - **One project, one key.** The API key lives in `.env` (git-ignored). Each creator who runs the tool
@@ -58,14 +60,14 @@ See [PRIVACY POLICY](https://inqard.github.io/niche-radar/privacy.html) and
 ## Install
 
 Requirements: Python 3.11+, a Google Cloud project with **YouTube Data API v3** enabled and an API key
-(APIs & Services → Credentials → Create credentials → API key; restrict it to YouTube Data API v3).
+(APIs & Services в†’ Credentials в†’ Create credentials в†’ API key; restrict it to YouTube Data API v3).
 
 ```bash
 git clone https://github.com/Inqard/niche-radar.git
 cd niche-radar
 pip install -r requirements.txt
 copy .env.example .env      # then put YOUTUBE_API_KEY=... inside
-python -m pytest -q         # 88 offline tests, no key needed
+python -m pytest -q         # 91 offline tests, no key needed
 python -u -m niche_radar run
 ```
 

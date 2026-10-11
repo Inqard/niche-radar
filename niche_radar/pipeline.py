@@ -33,6 +33,7 @@ class RunResult:
     search_budget: int = 0
     imported_channels: list[str] = field(default_factory=list)
     related_new: list[str] = field(default_factory=list)
+    solo_clusters: list[Niche] = field(default_factory=list)  # one-channel sub-niches (no competitor in sight)
 
 
 class QuotaMeter:
@@ -211,13 +212,26 @@ def _enrich(client, store: Store, cfg: dict, now: datetime, ts: str,
     ec = cfg["enrich"]
     window_start = iso(now - timedelta(days=cfg["search"]["window_days"]))
     rows = store.conn.execute(
-        """SELECT c.channel_id, c.uploads_playlist, c.uploads_fetched_at, MAX(s.views) AS best
+        """SELECT c.channel_id, c.title, c.uploads_playlist, c.uploads_fetched_at, c.published_at, cs.subs,
+                  MAX(s.views) AS best
            FROM channels c JOIN videos v ON v.channel_id = c.channel_id
            JOIN video_stats s ON s.video_id = v.video_id AND s.ts = ?
            JOIN channel_stats cs ON cs.channel_id = c.channel_id AND cs.ts = ?
            WHERE v.published_at >= ? AND (cs.subs IS NULL OR cs.subs <= ?)
-           GROUP BY c.channel_id HAVING best >= ? ORDER BY best DESC""",
+           GROUP BY c.channel_id HAVING best >= ?""",
         (ts, ts, window_start, ec["max_subs"], ec["min_hit_views"])).fetchall()
+    # Indicator candidates first (young and small — В1/В2), then the rest by their best hit. Ordering by
+    # the best hit alone starved them: live 11.10, 184 of 267 young small channels never got their uploads,
+    # and without uploads neither growth nor cadence can be measured.
+    ind = cfg["indicator"]
+
+    def young_small(row) -> bool:
+        created = parse_ts(row["published_at"])
+        return (created is not None and m.days_between(now, created) <= ind["max_age_days"]
+                and (row["subs"] is not None and row["subs"] < ind["max_subs"])
+                and not m.is_auto_channel(row["title"]))  # "… - Topic" can never be an indicator
+
+    rows = sorted(rows, key=lambda r: (not young_small(r), -r["best"], r["channel_id"]))
     requery = cfg["schedule"]["requery_days"]
     new_ids: list[str] = []
     enriched = 0
@@ -287,10 +301,12 @@ def _related_rows(store: Store) -> list[dict]:
 
 
 def _score_all(store: Store, cfg: dict, now: datetime):
+    """(videos, channels, query niches, multi-channel clusters, one-channel 'solo' clusters)."""
     videos = build_videos(store, cfg, now)
     channels = build_channels(store, videos, cfg, now)
+    groups = build_cluster_niches(store, videos, channels, cfg, now)
     return (videos, channels, build_niches(store, videos, channels, cfg, now),
-            build_cluster_niches(store, videos, channels, cfg, now))
+            [n for n in groups if n.kind == "cluster"], [n for n in groups if n.kind == "solo"])
 
 
 def run(client, store: Store, cfg: dict, now: datetime, meter: QuotaMeter) -> RunResult:
@@ -353,7 +369,7 @@ def run(client, store: Store, cfg: dict, now: datetime, meter: QuotaMeter) -> Ru
     if any(removed.values()):
         notes.append("retention: удалено " + ", ".join(f"{k} {v}" for k, v in removed.items() if v))
 
-    videos, channels, niches, clusters = _score_all(store, cfg, now)
+    videos, channels, niches, clusters, solo = _score_all(store, cfg, now)
     dormant = update_query_lifecycle(store, niches, cfg)
 
     existing = {q["query"] for q in store.queries()}
@@ -369,12 +385,12 @@ def run(client, store: Store, cfg: dict, now: datetime, meter: QuotaMeter) -> Ru
                            parent=c.parent, evidence=evidence, priority=c.priority)
     store.finish_run(run_id, now, meter.calls.get("search", 0), meter.calls.get("default", 0), notes)
     return RunResult(run_id, now, videos, channels, niches, clusters, _related_rows(store), candidates,
-                     dormant, notes, dict(meter.calls), budget, imported_channels, related_new)
+                     dormant, notes, dict(meter.calls), budget, imported_channels, related_new, solo)
 
 
 def rescore(store: Store, cfg: dict, now: datetime) -> RunResult:
     """Recompute tables from the store without API calls or registry changes."""
-    videos, channels, niches, clusters = _score_all(store, cfg, now)
+    videos, channels, niches, clusters, solo = _score_all(store, cfg, now)
     last = store.last_run()
     return RunResult(last["run_id"] if last else 0, now, videos, channels, niches, clusters,
-                     _related_rows(store))
+                     _related_rows(store), solo_clusters=solo)

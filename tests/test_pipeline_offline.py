@@ -517,6 +517,30 @@ def test_category_top_search_reaches_what_no_keyword_found(cfg, tmp_path):
     text = write_outputs(result, cfg, tmp_path / "reports").read_text(encoding="utf-8")
     assert "## 10a." in text and "Science & Technology (категория 28)" in text
     assert "конвейер ≥ 2 видео/день" in text
+    # FARM is the only channel on its theme -> a one-channel topic (В4 «создал поднишу»), listed in §2c
+    solo = next(n for n in result.solo_clusters if "farm0" in n.video_ids)
+    assert solo.query.startswith("solo:") and solo.channels == 1
+    assert not any("farm0" in c.video_ids for c in result.clusters)
+    section_2c = text.split("## 2c.", 1)[1].split("\n## ", 1)[0]
+    assert "Bridge Facts Daily" in section_2c
+    assert (tmp_path / "reports" / "solo-2026-10-10.csv").exists()
+    store.close()
+
+
+def test_enrichment_serves_young_small_channels_first(cfg, tmp_path):
+    # live 11.10: ordered by the best hit only, 184 of 267 young small channels never got their uploads
+    cfg["enrich"]["max_channels"] = 3
+    store = Store(tmp_path / "radar.sqlite")
+    meter = QuotaMeter(store, DAY1)
+    result = run(FakeClient(FakeWorld(DAY1), meter), store, cfg, DAY1, meter)
+    fetched = {r["channel_id"] for r in store.all_rows("channels") if r["uploads_fetched_at"]}
+    ind = cfg["indicator"]
+    # 3 from the queue (+ related channels, which have their own budget, e.g. SMITH via NEW's featured list)
+    assert {"ONE", "NEW"} <= fetched
+    assert all(result.channels[c].age_days <= ind["max_age_days"] and result.channels[c].subs < ind["max_subs"]
+               for c in fetched)
+    assert "LINGO" not in fetched                 # 400K hit, but 300 days old: waits behind the young ones
+    assert "TOPIC" not in fetched                 # auto "- Topic" channel: never an indicator
     store.close()
 
 
@@ -526,6 +550,20 @@ def test_silence_is_judged_only_when_the_upload_list_is_known(day1):
     assert official.n_long == 5 and not official.uploads_known
     assert not official.possible_demonetized and official.days_since_last is None
     assert result.channels["DEMON"].uploads_known and result.channels["DEMON"].possible_demonetized
+
+
+def test_every_window_video_lands_in_exactly_one_list(day1, cfg):
+    # completeness: sub-niche, one-channel topic or the "outside any topic" list — nothing in the sample is lost
+    _, _, _, result, tmp_path = day1
+    write_outputs(result, cfg, tmp_path / "reports")
+    population = {v.video_id for v in window_videos(result.videos, cfg, DAY1)}
+    multi = [i for n in result.clusters for i in n.video_ids]
+    solo = [i for n in result.solo_clusters for i in n.video_ids]
+    with open(tmp_path / "reports" / "unclustered-2026-10-10.csv", encoding="utf-8-sig") as f:
+        rest = [r["video_id"] for r in csv.DictReader(f)]
+    listed = multi + solo + rest
+    assert len(listed) == len(set(listed))            # no video in two lists
+    assert set(listed) == population                  # and none missing
 
 
 def test_author_ai_label_becomes_a_flag(day1):
