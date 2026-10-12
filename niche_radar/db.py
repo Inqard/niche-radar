@@ -283,6 +283,18 @@ class Store:
             (since, since)).fetchall()
         return [r["video_id"] for r in rows]
 
+    def channel_ids_of(self, video_ids: list[str], chunk: int = 500) -> list[str]:
+        """Distinct channels of the given videos. Chunked: one IN (...) per 500 ids — live 12.10 the window
+        reached ~45K videos and a single statement hit SQLite's 'too many SQL variables'."""
+        found: set[str] = set()
+        ids = sorted(set(video_ids))
+        for i in range(0, len(ids), chunk):
+            part = ids[i:i + chunk]
+            marks = ",".join("?" * len(part))
+            found.update(r[0] for r in self.conn.execute(
+                f"SELECT DISTINCT channel_id FROM videos WHERE video_id IN ({marks})", part))
+        return sorted(found)
+
     def video_ids_without_details(self, ids: list[str]) -> list[str]:
         known = {r["video_id"] for r in self.conn.execute("SELECT video_id FROM videos")}
         return [v for v in ids if v not in known]

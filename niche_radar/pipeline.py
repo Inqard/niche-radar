@@ -207,9 +207,7 @@ def _enrich(client, store: Store, cfg: dict, now: datetime, ts: str,
     fetched |= to_refresh
     store.conn.commit()
 
-    marks = ",".join("?" * len(fetched)) or "''"
-    channel_ids = [r[0] for r in store.conn.execute(
-        f"SELECT DISTINCT channel_id FROM videos WHERE video_id IN ({marks})", sorted(fetched))]
+    channel_ids = store.channel_ids_of(list(fetched))
     for item in client.channels(channel_ids):
         store.upsert_channel(item, ts)
     store.conn.commit()

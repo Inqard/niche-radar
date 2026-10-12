@@ -23,6 +23,16 @@ def test_old_database_gets_last_order_column(tmp_path):
     store.close()
 
 
+def test_channels_of_a_huge_refresh_set_do_not_hit_the_sql_variable_limit():
+    # live 12.10 (run #6): ~45K window videos in one IN (...) -> sqlite3.OperationalError: too many SQL variables
+    store = Store(":memory:")
+    store.conn.executemany("INSERT INTO videos (video_id, channel_id) VALUES (?, ?)",
+                           [(f"v{i}", f"C{i % 1000}") for i in range(40_000)])
+    ids = [f"v{i}" for i in range(40_000)] + ["missing"]
+    assert store.channel_ids_of(ids) == sorted(f"C{i}" for i in range(1000))
+    store.close()
+
+
 def test_broad_map_queries_use_their_own_cadence_and_duration():
     cfg = load_config()
     cfg["directions"] = {"languages": ["etymology"]}
