@@ -397,14 +397,25 @@ def build_cluster_niches(store: Store, videos: dict[str, Video], channels: dict[
     return _ranked(niches)
 
 
-def update_query_lifecycle(store: Store, niches: list[Niche], cfg: dict) -> list[str]:
-    """Record scores; automatically added sub-niches that stay weak go dormant. Seeds never do."""
+def update_query_lifecycle(store: Store, niches: list[Niche], cfg: dict, now: datetime) -> list[str]:
+    """Automatically added sub-niches with no demand go dormant; seeds never do.
+
+    Weak = views in the window below `dormant_max_views` (operator 11.10: views decide, the opportunity score
+    is only information). Until 12.10 it was the score, which is low by design for crowded niches: true crime,
+    wildlife and crime documentaries went dormant with tens of millions of views. A query must also be
+    `dormant_min_age_days` old, so several runs a day cannot put it to sleep within hours."""
     dc = cfg["discovery"]
-    dormant: list[str] = []
-    for n in niches:
-        store.record_query_score(n.query, n.score, n.score < dc["dormant_score"])
+    for n in niches:  # last_score also breaks ties in the search planner, so every scored query records it
+        store.record_query_score(n.query, n.score, n.window_views < dc["dormant_max_views"])
+    scored = {n.query for n in niches}
     for q in store.queries(("active",)):
-        if q["origin"] in AUTO_ORIGINS and (q["low_score_runs"] or 0) >= dc["dormant_after_runs"]:
+        if q["query"] not in scored:  # searched, but nothing in the window = no demand seen
+            store.record_query_score(q["query"], 0.0, True)
+    dormant: list[str] = []
+    for q in store.queries(("active",)):
+        created = parse_ts(q["created_at"])
+        old_enough = created is not None and m.days_between(now, created) >= dc["dormant_min_age_days"]
+        if q["origin"] in AUTO_ORIGINS and old_enough and (q["low_score_runs"] or 0) >= dc["dormant_after_runs"]:
             store.set_query_status(q["query"], "dormant")
             dormant.append(q["query"])
     store.conn.commit()

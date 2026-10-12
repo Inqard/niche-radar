@@ -402,7 +402,7 @@ def render_markdown(result: RunResult, cfg: dict, top_n: int = 25) -> str:
     out += _rows(sorted(category_tops, key=lambda n: (-n.window_views, n.query)))
 
     if result.dormant:
-        out += ["", "## 11. Ушли в dormant (слабый score несколько запусков подряд)", ""]
+        out += ["", "## 11. Ушли в dormant (нет спроса: мало просмотров несколько запусков подряд)", ""]
         out += [f"- {q}" for q in result.dormant]
 
     if manual:

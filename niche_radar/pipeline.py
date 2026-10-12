@@ -109,8 +109,14 @@ def plan_searches(store: Store, cfg: dict, now: datetime, budget: int) -> list[t
                 # staleness is measured in cycles, so a 10-day map query and a 4-day interest query compete fairly
                 due.append((age / requery, q["last_score"] or 0.0, q["query"], d))
     due.sort(key=lambda t: (t[0], t[1]), reverse=True)
-    for _, _, query, d in due:
+    # В2 category tops are few and cheap (~2 calls/day): they get their own slot, otherwise never-searched map
+    # seeds (staleness ∞ as well) keep them waiting for days — live 12.10: 0 of 30 category tasks in run #5
+    cat_cap = cfg.get("category_search", {}).get("max_per_run", 0)
+    for _, _, query, d in [t for t in due if category_id_of(t[2]) is not None][:cat_cap]:
         if fits(budget):
+            tasks.append((query, d))
+    for _, _, query, d in due:
+        if (query, d) not in tasks and fits(budget):
             tasks.append((query, d))
 
     for q in candidates:  # unused budget goes back to exploration
@@ -370,7 +376,7 @@ def run(client, store: Store, cfg: dict, now: datetime, meter: QuotaMeter) -> Ru
         notes.append("retention: удалено " + ", ".join(f"{k} {v}" for k, v in removed.items() if v))
 
     videos, channels, niches, clusters, solo = _score_all(store, cfg, now)
-    dormant = update_query_lifecycle(store, niches, cfg)
+    dormant = update_query_lifecycle(store, niches, cfg, now)
 
     existing = {q["query"] for q in store.queries()}
     safe_clusters = [c for c in clusters if c.risk_share <= cfg["discovery"]["max_source_risk_share"]]
